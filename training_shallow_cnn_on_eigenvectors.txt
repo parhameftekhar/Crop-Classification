@@ -1,0 +1,381 @@
+2025-07-01 00:56:01,544 - INFO - Logging initialized. Logs will be saved to training_shallow_cnn_on_eigenvectors.txt
+2025-07-01 00:56:01,544 - INFO - Using device: cuda
+2025-07-01 00:56:01,851 - INFO - Loaded 1074 samples from train_eigen_vectors.npy and train_labels.npy in binary_classifiers_outputs_deprecated
+2025-07-01 00:56:01,920 - INFO - Loaded 231 samples from val_eigen_vectors.npy and val_labels.npy in binary_classifiers_outputs_deprecated
+2025-07-01 00:56:01,993 - INFO - Loaded 231 samples from test_eigen_vectors.npy and test_labels.npy in binary_classifiers_outputs_deprecated
+2025-07-01 00:56:02,579 - INFO - Starting training...
+2025-07-01 00:56:07,401 - INFO - Epoch [1/50], Step [10/68], Train Loss: 1.7721
+2025-07-01 00:56:11,950 - INFO - Epoch [1/50], Step [20/68], Train Loss: 1.5553
+2025-07-01 00:56:16,493 - INFO - Epoch [1/50], Step [30/68], Train Loss: 1.5062
+2025-07-01 00:56:21,053 - INFO - Epoch [1/50], Step [40/68], Train Loss: 1.4995
+2025-07-01 00:56:25,617 - INFO - Epoch [1/50], Step [50/68], Train Loss: 1.4665
+2025-07-01 00:56:30,204 - INFO - Epoch [1/50], Step [60/68], Train Loss: 1.4923
+2025-07-01 00:56:35,399 - INFO - Epoch [1/50], Validation Loss: 1.5007, Validation Accuracy: 35.65%
+2025-07-01 00:56:35,405 - INFO - Saved best model with validation loss: 1.5007
+2025-07-01 00:56:40,090 - INFO - Epoch [2/50], Step [10/68], Train Loss: 1.4649
+2025-07-01 00:56:44,691 - INFO - Epoch [2/50], Step [20/68], Train Loss: 1.4852
+2025-07-01 00:56:49,306 - INFO - Epoch [2/50], Step [30/68], Train Loss: 1.4486
+2025-07-01 00:56:53,929 - INFO - Epoch [2/50], Step [40/68], Train Loss: 1.4399
+2025-07-01 00:56:58,550 - INFO - Epoch [2/50], Step [50/68], Train Loss: 1.4092
+2025-07-01 00:57:03,175 - INFO - Epoch [2/50], Step [60/68], Train Loss: 1.3922
+2025-07-01 00:57:08,393 - INFO - Epoch [2/50], Validation Loss: 1.3840, Validation Accuracy: 40.68%
+2025-07-01 00:57:08,400 - INFO - Saved best model with validation loss: 1.3840
+2025-07-01 00:57:13,121 - INFO - Epoch [3/50], Step [10/68], Train Loss: 1.3411
+2025-07-01 00:57:17,777 - INFO - Epoch [3/50], Step [20/68], Train Loss: 1.3278
+2025-07-01 00:57:22,440 - INFO - Epoch [3/50], Step [30/68], Train Loss: 1.2664
+2025-07-01 00:57:27,099 - INFO - Epoch [3/50], Step [40/68], Train Loss: 1.2618
+2025-07-01 00:57:31,758 - INFO - Epoch [3/50], Step [50/68], Train Loss: 1.2308
+2025-07-01 00:57:36,417 - INFO - Epoch [3/50], Step [60/68], Train Loss: 1.1780
+2025-07-01 00:57:41,659 - INFO - Epoch [3/50], Validation Loss: 1.2393, Validation Accuracy: 48.58%
+2025-07-01 00:57:41,666 - INFO - Saved best model with validation loss: 1.2393
+2025-07-01 00:57:46,432 - INFO - Epoch [4/50], Step [10/68], Train Loss: 1.2409
+2025-07-01 00:57:51,098 - INFO - Epoch [4/50], Step [20/68], Train Loss: 1.2056
+2025-07-01 00:57:55,759 - INFO - Epoch [4/50], Step [30/68], Train Loss: 1.1678
+2025-07-01 00:58:00,437 - INFO - Epoch [4/50], Step [40/68], Train Loss: 1.1383
+2025-07-01 00:58:05,108 - INFO - Epoch [4/50], Step [50/68], Train Loss: 1.1662
+2025-07-01 00:58:09,786 - INFO - Epoch [4/50], Step [60/68], Train Loss: 1.1180
+2025-07-01 00:58:15,134 - INFO - Epoch [4/50], Validation Loss: 1.0980, Validation Accuracy: 54.40%
+2025-07-01 00:58:15,140 - INFO - Saved best model with validation loss: 1.0980
+2025-07-01 00:58:19,914 - INFO - Epoch [5/50], Step [10/68], Train Loss: 1.0524
+2025-07-01 00:58:24,664 - INFO - Epoch [5/50], Step [20/68], Train Loss: 1.0971
+2025-07-01 00:58:29,344 - INFO - Epoch [5/50], Step [30/68], Train Loss: 1.0675
+2025-07-01 00:58:34,137 - INFO - Epoch [5/50], Step [40/68], Train Loss: 1.1129
+2025-07-01 00:58:38,817 - INFO - Epoch [5/50], Step [50/68], Train Loss: 1.0728
+2025-07-01 00:58:43,514 - INFO - Epoch [5/50], Step [60/68], Train Loss: 1.0553
+2025-07-01 00:58:48,816 - INFO - Epoch [5/50], Validation Loss: 1.0426, Validation Accuracy: 57.07%
+2025-07-01 00:58:48,841 - INFO - Saved best model with validation loss: 1.0426
+2025-07-01 00:58:53,729 - INFO - Epoch [6/50], Step [10/68], Train Loss: 1.0402
+2025-07-01 00:58:58,512 - INFO - Epoch [6/50], Step [20/68], Train Loss: 1.0146
+2025-07-01 00:59:03,262 - INFO - Epoch [6/50], Step [30/68], Train Loss: 1.0641
+2025-07-01 00:59:08,054 - INFO - Epoch [6/50], Step [40/68], Train Loss: 1.0705
+2025-07-01 00:59:12,756 - INFO - Epoch [6/50], Step [50/68], Train Loss: 1.0342
+2025-07-01 00:59:17,476 - INFO - Epoch [6/50], Step [60/68], Train Loss: 1.0563
+2025-07-01 00:59:22,794 - INFO - Epoch [6/50], Validation Loss: 1.0364, Validation Accuracy: 58.09%
+2025-07-01 00:59:22,801 - INFO - Saved best model with validation loss: 1.0364
+2025-07-01 00:59:27,740 - INFO - Epoch [7/50], Step [10/68], Train Loss: 1.0461
+2025-07-01 00:59:32,592 - INFO - Epoch [7/50], Step [20/68], Train Loss: 1.0677
+2025-07-01 00:59:37,334 - INFO - Epoch [7/50], Step [30/68], Train Loss: 1.0193
+2025-07-01 00:59:42,163 - INFO - Epoch [7/50], Step [40/68], Train Loss: 1.0170
+2025-07-01 00:59:46,875 - INFO - Epoch [7/50], Step [50/68], Train Loss: 0.9839
+2025-07-01 00:59:51,635 - INFO - Epoch [7/50], Step [60/68], Train Loss: 1.0262
+2025-07-01 00:59:56,998 - INFO - Epoch [7/50], Validation Loss: 1.0299, Validation Accuracy: 58.23%
+2025-07-01 00:59:57,004 - INFO - Saved best model with validation loss: 1.0299
+2025-07-01 01:00:01,811 - INFO - Epoch [8/50], Step [10/68], Train Loss: 1.0144
+2025-07-01 01:00:06,543 - INFO - Epoch [8/50], Step [20/68], Train Loss: 1.0063
+2025-07-01 01:00:11,307 - INFO - Epoch [8/50], Step [30/68], Train Loss: 0.9925
+2025-07-01 01:00:16,087 - INFO - Epoch [8/50], Step [40/68], Train Loss: 0.9631
+2025-07-01 01:00:20,864 - INFO - Epoch [8/50], Step [50/68], Train Loss: 0.9639
+2025-07-01 01:00:25,648 - INFO - Epoch [8/50], Step [60/68], Train Loss: 1.0062
+2025-07-01 01:00:30,987 - INFO - Epoch [8/50], Validation Loss: 0.9957, Validation Accuracy: 59.90%
+2025-07-01 01:00:30,994 - INFO - Saved best model with validation loss: 0.9957
+2025-07-01 01:00:35,814 - INFO - Epoch [9/50], Step [10/68], Train Loss: 0.9763
+2025-07-01 01:00:40,608 - INFO - Epoch [9/50], Step [20/68], Train Loss: 0.9878
+2025-07-01 01:00:45,457 - INFO - Epoch [9/50], Step [30/68], Train Loss: 0.9643
+2025-07-01 01:00:50,287 - INFO - Epoch [9/50], Step [40/68], Train Loss: 0.9929
+2025-07-01 01:00:55,045 - INFO - Epoch [9/50], Step [50/68], Train Loss: 0.9823
+2025-07-01 01:00:59,904 - INFO - Epoch [9/50], Step [60/68], Train Loss: 1.0034
+2025-07-01 01:01:05,246 - INFO - Epoch [9/50], Validation Loss: 0.9788, Validation Accuracy: 60.54%
+2025-07-01 01:01:05,252 - INFO - Saved best model with validation loss: 0.9788
+2025-07-01 01:01:10,147 - INFO - Epoch [10/50], Step [10/68], Train Loss: 0.9951
+2025-07-01 01:01:14,933 - INFO - Epoch [10/50], Step [20/68], Train Loss: 0.9805
+2025-07-01 01:01:19,715 - INFO - Epoch [10/50], Step [30/68], Train Loss: 0.9354
+2025-07-01 01:01:24,519 - INFO - Epoch [10/50], Step [40/68], Train Loss: 0.9256
+2025-07-01 01:01:29,333 - INFO - Epoch [10/50], Step [50/68], Train Loss: 0.9602
+2025-07-01 01:01:34,150 - INFO - Epoch [10/50], Step [60/68], Train Loss: 0.9434
+2025-07-01 01:01:39,527 - INFO - Epoch [10/50], Validation Loss: 0.9571, Validation Accuracy: 61.40%
+2025-07-01 01:01:39,541 - INFO - Saved best model with validation loss: 0.9571
+2025-07-01 01:01:44,382 - INFO - Epoch [11/50], Step [10/68], Train Loss: 0.9218
+2025-07-01 01:01:49,178 - INFO - Epoch [11/50], Step [20/68], Train Loss: 0.9436
+2025-07-01 01:01:53,962 - INFO - Epoch [11/50], Step [30/68], Train Loss: 0.9252
+2025-07-01 01:01:58,731 - INFO - Epoch [11/50], Step [40/68], Train Loss: 0.9598
+2025-07-01 01:02:03,527 - INFO - Epoch [11/50], Step [50/68], Train Loss: 0.9916
+2025-07-01 01:02:08,386 - INFO - Epoch [11/50], Step [60/68], Train Loss: 1.0049
+2025-07-01 01:02:13,778 - INFO - Epoch [11/50], Validation Loss: 0.9657, Validation Accuracy: 61.41%
+2025-07-01 01:02:18,775 - INFO - Epoch [12/50], Step [10/68], Train Loss: 0.9648
+2025-07-01 01:02:23,516 - INFO - Epoch [12/50], Step [20/68], Train Loss: 0.9690
+2025-07-01 01:02:28,296 - INFO - Epoch [12/50], Step [30/68], Train Loss: 0.9313
+2025-07-01 01:02:33,084 - INFO - Epoch [12/50], Step [40/68], Train Loss: 0.9531
+2025-07-01 01:02:37,867 - INFO - Epoch [12/50], Step [50/68], Train Loss: 0.9225
+2025-07-01 01:02:42,619 - INFO - Epoch [12/50], Step [60/68], Train Loss: 0.9092
+2025-07-01 01:02:48,101 - INFO - Epoch [12/50], Validation Loss: 1.0113, Validation Accuracy: 60.93%
+2025-07-01 01:02:52,931 - INFO - Epoch [13/50], Step [10/68], Train Loss: 0.9555
+2025-07-01 01:02:57,806 - INFO - Epoch [13/50], Step [20/68], Train Loss: 0.9440
+2025-07-01 01:03:02,626 - INFO - Epoch [13/50], Step [30/68], Train Loss: 0.9414
+2025-07-01 01:03:07,416 - INFO - Epoch [13/50], Step [40/68], Train Loss: 0.9406
+2025-07-01 01:03:12,214 - INFO - Epoch [13/50], Step [50/68], Train Loss: 0.9314
+2025-07-01 01:03:16,982 - INFO - Epoch [13/50], Step [60/68], Train Loss: 0.9395
+2025-07-01 01:03:22,343 - INFO - Epoch [13/50], Validation Loss: 1.1225, Validation Accuracy: 53.07%
+2025-07-01 01:03:27,261 - INFO - Epoch [14/50], Step [10/68], Train Loss: 0.9994
+2025-07-01 01:03:32,120 - INFO - Epoch [14/50], Step [20/68], Train Loss: 0.9614
+2025-07-01 01:03:36,895 - INFO - Epoch [14/50], Step [30/68], Train Loss: 0.9351
+2025-07-01 01:03:41,777 - INFO - Epoch [14/50], Step [40/68], Train Loss: 0.9363
+2025-07-01 01:03:46,566 - INFO - Epoch [14/50], Step [50/68], Train Loss: 0.9396
+2025-07-01 01:03:51,325 - INFO - Epoch [14/50], Step [60/68], Train Loss: 0.9105
+2025-07-01 01:03:56,644 - INFO - Epoch [14/50], Validation Loss: 0.9307, Validation Accuracy: 63.27%
+2025-07-01 01:03:56,650 - INFO - Saved best model with validation loss: 0.9307
+2025-07-01 01:04:01,576 - INFO - Epoch [15/50], Step [10/68], Train Loss: 0.9436
+2025-07-01 01:04:06,358 - INFO - Epoch [15/50], Step [20/68], Train Loss: 0.9379
+2025-07-01 01:04:11,114 - INFO - Epoch [15/50], Step [30/68], Train Loss: 0.8877
+2025-07-01 01:04:15,888 - INFO - Epoch [15/50], Step [40/68], Train Loss: 0.9127
+2025-07-01 01:04:20,672 - INFO - Epoch [15/50], Step [50/68], Train Loss: 0.9415
+2025-07-01 01:04:25,520 - INFO - Epoch [15/50], Step [60/68], Train Loss: 0.9157
+2025-07-01 01:04:30,868 - INFO - Epoch [15/50], Validation Loss: 0.9522, Validation Accuracy: 62.72%
+2025-07-01 01:04:35,747 - INFO - Epoch [16/50], Step [10/68], Train Loss: 0.9299
+2025-07-01 01:04:40,643 - INFO - Epoch [16/50], Step [20/68], Train Loss: 0.8944
+2025-07-01 01:04:45,408 - INFO - Epoch [16/50], Step [30/68], Train Loss: 0.9027
+2025-07-01 01:04:50,169 - INFO - Epoch [16/50], Step [40/68], Train Loss: 0.9048
+2025-07-01 01:04:54,943 - INFO - Epoch [16/50], Step [50/68], Train Loss: 0.9068
+2025-07-01 01:04:59,734 - INFO - Epoch [16/50], Step [60/68], Train Loss: 0.8823
+2025-07-01 01:05:05,175 - INFO - Epoch [16/50], Validation Loss: 0.9175, Validation Accuracy: 63.64%
+2025-07-01 01:05:05,187 - INFO - Saved best model with validation loss: 0.9175
+2025-07-01 01:05:10,222 - INFO - Epoch [17/50], Step [10/68], Train Loss: 0.9308
+2025-07-01 01:05:14,972 - INFO - Epoch [17/50], Step [20/68], Train Loss: 0.8991
+2025-07-01 01:05:19,732 - INFO - Epoch [17/50], Step [30/68], Train Loss: 0.8971
+2025-07-01 01:05:24,535 - INFO - Epoch [17/50], Step [40/68], Train Loss: 0.8964
+2025-07-01 01:05:29,396 - INFO - Epoch [17/50], Step [50/68], Train Loss: 0.9087
+2025-07-01 01:05:34,312 - INFO - Epoch [17/50], Step [60/68], Train Loss: 0.8985
+2025-07-01 01:05:39,618 - INFO - Epoch [17/50], Validation Loss: 0.9663, Validation Accuracy: 60.16%
+2025-07-01 01:05:44,464 - INFO - Epoch [18/50], Step [10/68], Train Loss: 0.9033
+2025-07-01 01:05:49,233 - INFO - Epoch [18/50], Step [20/68], Train Loss: 0.8714
+2025-07-01 01:05:54,047 - INFO - Epoch [18/50], Step [30/68], Train Loss: 0.8969
+2025-07-01 01:05:58,842 - INFO - Epoch [18/50], Step [40/68], Train Loss: 0.9069
+2025-07-01 01:06:03,633 - INFO - Epoch [18/50], Step [50/68], Train Loss: 0.9175
+2025-07-01 01:06:08,514 - INFO - Epoch [18/50], Step [60/68], Train Loss: 0.9041
+2025-07-01 01:06:13,811 - INFO - Epoch [18/50], Validation Loss: 1.0029, Validation Accuracy: 59.16%
+2025-07-01 01:06:18,774 - INFO - Epoch [19/50], Step [10/68], Train Loss: 0.9598
+2025-07-01 01:06:23,548 - INFO - Epoch [19/50], Step [20/68], Train Loss: 0.8872
+2025-07-01 01:06:28,296 - INFO - Epoch [19/50], Step [30/68], Train Loss: 0.9142
+2025-07-01 01:06:33,078 - INFO - Epoch [19/50], Step [40/68], Train Loss: 0.8752
+2025-07-01 01:06:37,829 - INFO - Epoch [19/50], Step [50/68], Train Loss: 0.9206
+2025-07-01 01:06:42,598 - INFO - Epoch [19/50], Step [60/68], Train Loss: 0.9069
+2025-07-01 01:06:47,982 - INFO - Epoch [19/50], Validation Loss: 0.9253, Validation Accuracy: 63.34%
+2025-07-01 01:06:52,835 - INFO - Epoch [20/50], Step [10/68], Train Loss: 0.9031
+2025-07-01 01:06:57,681 - INFO - Epoch [20/50], Step [20/68], Train Loss: 0.9039
+2025-07-01 01:07:02,534 - INFO - Epoch [20/50], Step [30/68], Train Loss: 0.8506
+2025-07-01 01:07:07,302 - INFO - Epoch [20/50], Step [40/68], Train Loss: 0.8667
+2025-07-01 01:07:12,082 - INFO - Epoch [20/50], Step [50/68], Train Loss: 0.8895
+2025-07-01 01:07:16,841 - INFO - Epoch [20/50], Step [60/68], Train Loss: 0.8894
+2025-07-01 01:07:22,157 - INFO - Epoch [20/50], Validation Loss: 0.9472, Validation Accuracy: 63.05%
+2025-07-01 01:07:27,018 - INFO - Epoch [21/50], Step [10/68], Train Loss: 0.8869
+2025-07-01 01:07:31,847 - INFO - Epoch [21/50], Step [20/68], Train Loss: 0.9190
+2025-07-01 01:07:36,655 - INFO - Epoch [21/50], Step [30/68], Train Loss: 0.8895
+2025-07-01 01:07:41,433 - INFO - Epoch [21/50], Step [40/68], Train Loss: 0.8952
+2025-07-01 01:07:46,241 - INFO - Epoch [21/50], Step [50/68], Train Loss: 0.8766
+2025-07-01 01:07:51,079 - INFO - Epoch [21/50], Step [60/68], Train Loss: 0.9017
+2025-07-01 01:07:56,450 - INFO - Epoch [21/50], Validation Loss: 0.8899, Validation Accuracy: 64.07%
+2025-07-01 01:07:56,456 - INFO - Saved best model with validation loss: 0.8899
+2025-07-01 01:08:01,268 - INFO - Epoch [22/50], Step [10/68], Train Loss: 0.8129
+2025-07-01 01:08:06,055 - INFO - Epoch [22/50], Step [20/68], Train Loss: 0.8998
+2025-07-01 01:08:10,852 - INFO - Epoch [22/50], Step [30/68], Train Loss: 0.8818
+2025-07-01 01:08:15,586 - INFO - Epoch [22/50], Step [40/68], Train Loss: 0.8698
+2025-07-01 01:08:20,376 - INFO - Epoch [22/50], Step [50/68], Train Loss: 0.8911
+2025-07-01 01:08:25,164 - INFO - Epoch [22/50], Step [60/68], Train Loss: 0.8664
+2025-07-01 01:08:30,533 - INFO - Epoch [22/50], Validation Loss: 0.9737, Validation Accuracy: 59.44%
+2025-07-01 01:08:35,381 - INFO - Epoch [23/50], Step [10/68], Train Loss: 0.9226
+2025-07-01 01:08:40,217 - INFO - Epoch [23/50], Step [20/68], Train Loss: 0.8846
+2025-07-01 01:08:45,002 - INFO - Epoch [23/50], Step [30/68], Train Loss: 0.8920
+2025-07-01 01:08:49,764 - INFO - Epoch [23/50], Step [40/68], Train Loss: 0.8785
+2025-07-01 01:08:54,522 - INFO - Epoch [23/50], Step [50/68], Train Loss: 0.8796
+2025-07-01 01:08:59,303 - INFO - Epoch [23/50], Step [60/68], Train Loss: 0.8621
+2025-07-01 01:09:04,767 - INFO - Epoch [23/50], Validation Loss: 0.9052, Validation Accuracy: 63.60%
+2025-07-01 01:09:09,621 - INFO - Epoch [24/50], Step [10/68], Train Loss: 0.9221
+2025-07-01 01:09:14,419 - INFO - Epoch [24/50], Step [20/68], Train Loss: 0.8623
+2025-07-01 01:09:19,172 - INFO - Epoch [24/50], Step [30/68], Train Loss: 0.8601
+2025-07-01 01:09:23,962 - INFO - Epoch [24/50], Step [40/68], Train Loss: 0.9031
+2025-07-01 01:09:28,763 - INFO - Epoch [24/50], Step [50/68], Train Loss: 0.8647
+2025-07-01 01:09:33,588 - INFO - Epoch [24/50], Step [60/68], Train Loss: 0.8402
+2025-07-01 01:09:38,937 - INFO - Epoch [24/50], Validation Loss: 0.8902, Validation Accuracy: 64.68%
+2025-07-01 01:09:43,815 - INFO - Epoch [25/50], Step [10/68], Train Loss: 0.8524
+2025-07-01 01:09:48,568 - INFO - Epoch [25/50], Step [20/68], Train Loss: 0.8895
+2025-07-01 01:09:53,355 - INFO - Epoch [25/50], Step [30/68], Train Loss: 0.8919
+2025-07-01 01:09:58,266 - INFO - Epoch [25/50], Step [40/68], Train Loss: 0.8601
+2025-07-01 01:10:03,035 - INFO - Epoch [25/50], Step [50/68], Train Loss: 0.8517
+2025-07-01 01:10:07,807 - INFO - Epoch [25/50], Step [60/68], Train Loss: 0.8275
+2025-07-01 01:10:13,168 - INFO - Epoch [25/50], Validation Loss: 0.8873, Validation Accuracy: 64.85%
+2025-07-01 01:10:13,193 - INFO - Saved best model with validation loss: 0.8873
+2025-07-01 01:10:18,009 - INFO - Epoch [26/50], Step [10/68], Train Loss: 0.8600
+2025-07-01 01:10:22,769 - INFO - Epoch [26/50], Step [20/68], Train Loss: 0.8871
+2025-07-01 01:10:27,548 - INFO - Epoch [26/50], Step [30/68], Train Loss: 0.9080
+2025-07-01 01:10:32,347 - INFO - Epoch [26/50], Step [40/68], Train Loss: 0.8649
+2025-07-01 01:10:37,111 - INFO - Epoch [26/50], Step [50/68], Train Loss: 0.8802
+2025-07-01 01:10:41,931 - INFO - Epoch [26/50], Step [60/68], Train Loss: 0.8719
+2025-07-01 01:10:47,245 - INFO - Epoch [26/50], Validation Loss: 0.9103, Validation Accuracy: 63.41%
+2025-07-01 01:10:52,137 - INFO - Epoch [27/50], Step [10/68], Train Loss: 0.9221
+2025-07-01 01:10:56,967 - INFO - Epoch [27/50], Step [20/68], Train Loss: 0.8599
+2025-07-01 01:11:01,754 - INFO - Epoch [27/50], Step [30/68], Train Loss: 0.8354
+2025-07-01 01:11:06,537 - INFO - Epoch [27/50], Step [40/68], Train Loss: 0.8454
+2025-07-01 01:11:11,306 - INFO - Epoch [27/50], Step [50/68], Train Loss: 0.8332
+2025-07-01 01:11:16,084 - INFO - Epoch [27/50], Step [60/68], Train Loss: 0.8721
+2025-07-01 01:11:21,439 - INFO - Epoch [27/50], Validation Loss: 0.9200, Validation Accuracy: 64.11%
+2025-07-01 01:11:26,390 - INFO - Epoch [28/50], Step [10/68], Train Loss: 0.8659
+2025-07-01 01:11:31,114 - INFO - Epoch [28/50], Step [20/68], Train Loss: 0.8684
+2025-07-01 01:11:35,866 - INFO - Epoch [28/50], Step [30/68], Train Loss: 0.8643
+2025-07-01 01:11:40,653 - INFO - Epoch [28/50], Step [40/68], Train Loss: 0.8678
+2025-07-01 01:11:45,510 - INFO - Epoch [28/50], Step [50/68], Train Loss: 0.8759
+2025-07-01 01:11:50,259 - INFO - Epoch [28/50], Step [60/68], Train Loss: 0.8721
+2025-07-01 01:11:55,712 - INFO - Epoch [28/50], Validation Loss: 0.9055, Validation Accuracy: 64.30%
+2025-07-01 01:12:00,524 - INFO - Epoch [29/50], Step [10/68], Train Loss: 0.8683
+2025-07-01 01:12:05,284 - INFO - Epoch [29/50], Step [20/68], Train Loss: 0.8651
+2025-07-01 01:12:10,054 - INFO - Epoch [29/50], Step [30/68], Train Loss: 0.8450
+2025-07-01 01:12:14,794 - INFO - Epoch [29/50], Step [40/68], Train Loss: 0.8470
+2025-07-01 01:12:19,602 - INFO - Epoch [29/50], Step [50/68], Train Loss: 0.8610
+2025-07-01 01:12:24,356 - INFO - Epoch [29/50], Step [60/68], Train Loss: 0.9011
+2025-07-01 01:12:29,866 - INFO - Epoch [29/50], Validation Loss: 0.9097, Validation Accuracy: 62.39%
+2025-07-01 01:12:34,847 - INFO - Epoch [30/50], Step [10/68], Train Loss: 0.8836
+2025-07-01 01:12:39,538 - INFO - Epoch [30/50], Step [20/68], Train Loss: 0.8676
+2025-07-01 01:12:44,261 - INFO - Epoch [30/50], Step [30/68], Train Loss: 0.8487
+2025-07-01 01:12:49,038 - INFO - Epoch [30/50], Step [40/68], Train Loss: 0.8667
+2025-07-01 01:12:53,815 - INFO - Epoch [30/50], Step [50/68], Train Loss: 0.8606
+2025-07-01 01:12:58,574 - INFO - Epoch [30/50], Step [60/68], Train Loss: 0.8566
+2025-07-01 01:13:03,895 - INFO - Epoch [30/50], Validation Loss: 0.8718, Validation Accuracy: 65.38%
+2025-07-01 01:13:03,920 - INFO - Saved best model with validation loss: 0.8718
+2025-07-01 01:13:08,751 - INFO - Epoch [31/50], Step [10/68], Train Loss: 0.8234
+2025-07-01 01:13:13,639 - INFO - Epoch [31/50], Step [20/68], Train Loss: 0.8632
+2025-07-01 01:13:18,387 - INFO - Epoch [31/50], Step [30/68], Train Loss: 0.8656
+2025-07-01 01:13:23,215 - INFO - Epoch [31/50], Step [40/68], Train Loss: 0.8930
+2025-07-01 01:13:27,987 - INFO - Epoch [31/50], Step [50/68], Train Loss: 0.8871
+2025-07-01 01:13:32,810 - INFO - Epoch [31/50], Step [60/68], Train Loss: 0.8527
+2025-07-01 01:13:38,253 - INFO - Epoch [31/50], Validation Loss: 0.9006, Validation Accuracy: 64.71%
+2025-07-01 01:13:43,145 - INFO - Epoch [32/50], Step [10/68], Train Loss: 0.8733
+2025-07-01 01:13:47,867 - INFO - Epoch [32/50], Step [20/68], Train Loss: 0.8592
+2025-07-01 01:13:52,633 - INFO - Epoch [32/50], Step [30/68], Train Loss: 0.8243
+2025-07-01 01:13:57,402 - INFO - Epoch [32/50], Step [40/68], Train Loss: 0.8735
+2025-07-01 01:14:02,242 - INFO - Epoch [32/50], Step [50/68], Train Loss: 0.8257
+2025-07-01 01:14:06,991 - INFO - Epoch [32/50], Step [60/68], Train Loss: 0.8433
+2025-07-01 01:14:12,327 - INFO - Epoch [32/50], Validation Loss: 0.8596, Validation Accuracy: 65.99%
+2025-07-01 01:14:12,333 - INFO - Saved best model with validation loss: 0.8596
+2025-07-01 01:14:17,204 - INFO - Epoch [33/50], Step [10/68], Train Loss: 0.8563
+2025-07-01 01:14:21,979 - INFO - Epoch [33/50], Step [20/68], Train Loss: 0.8451
+2025-07-01 01:14:26,749 - INFO - Epoch [33/50], Step [30/68], Train Loss: 0.8763
+2025-07-01 01:14:31,531 - INFO - Epoch [33/50], Step [40/68], Train Loss: 0.8526
+2025-07-01 01:14:36,379 - INFO - Epoch [33/50], Step [50/68], Train Loss: 0.8644
+2025-07-01 01:14:41,189 - INFO - Epoch [33/50], Step [60/68], Train Loss: 0.8255
+2025-07-01 01:14:46,539 - INFO - Epoch [33/50], Validation Loss: 0.8811, Validation Accuracy: 64.15%
+2025-07-01 01:14:51,417 - INFO - Epoch [34/50], Step [10/68], Train Loss: 0.8521
+2025-07-01 01:14:56,236 - INFO - Epoch [34/50], Step [20/68], Train Loss: 0.8600
+2025-07-01 01:15:00,969 - INFO - Epoch [34/50], Step [30/68], Train Loss: 0.8120
+2025-07-01 01:15:05,762 - INFO - Epoch [34/50], Step [40/68], Train Loss: 0.8517
+2025-07-01 01:15:10,537 - INFO - Epoch [34/50], Step [50/68], Train Loss: 0.8495
+2025-07-01 01:15:15,295 - INFO - Epoch [34/50], Step [60/68], Train Loss: 0.8577
+2025-07-01 01:15:20,672 - INFO - Epoch [34/50], Validation Loss: 0.8673, Validation Accuracy: 65.06%
+2025-07-01 01:15:25,493 - INFO - Epoch [35/50], Step [10/68], Train Loss: 0.8481
+2025-07-01 01:15:30,279 - INFO - Epoch [35/50], Step [20/68], Train Loss: 0.8608
+2025-07-01 01:15:35,029 - INFO - Epoch [35/50], Step [30/68], Train Loss: 0.8441
+2025-07-01 01:15:39,802 - INFO - Epoch [35/50], Step [40/68], Train Loss: 0.8701
+2025-07-01 01:15:44,638 - INFO - Epoch [35/50], Step [50/68], Train Loss: 0.8402
+2025-07-01 01:15:49,474 - INFO - Epoch [35/50], Step [60/68], Train Loss: 0.8539
+2025-07-01 01:15:54,834 - INFO - Epoch [35/50], Validation Loss: 0.8537, Validation Accuracy: 66.08%
+2025-07-01 01:15:54,848 - INFO - Saved best model with validation loss: 0.8537
+2025-07-01 01:15:59,705 - INFO - Epoch [36/50], Step [10/68], Train Loss: 0.8324
+2025-07-01 01:16:04,553 - INFO - Epoch [36/50], Step [20/68], Train Loss: 0.8044
+2025-07-01 01:16:09,317 - INFO - Epoch [36/50], Step [30/68], Train Loss: 0.8371
+2025-07-01 01:16:14,076 - INFO - Epoch [36/50], Step [40/68], Train Loss: 0.8457
+2025-07-01 01:16:18,827 - INFO - Epoch [36/50], Step [50/68], Train Loss: 0.8039
+2025-07-01 01:16:23,610 - INFO - Epoch [36/50], Step [60/68], Train Loss: 0.8477
+2025-07-01 01:16:28,962 - INFO - Epoch [36/50], Validation Loss: 0.8568, Validation Accuracy: 65.77%
+2025-07-01 01:16:33,861 - INFO - Epoch [37/50], Step [10/68], Train Loss: 0.8119
+2025-07-01 01:16:38,637 - INFO - Epoch [37/50], Step [20/68], Train Loss: 0.8088
+2025-07-01 01:16:43,420 - INFO - Epoch [37/50], Step [30/68], Train Loss: 0.8576
+2025-07-01 01:16:48,176 - INFO - Epoch [37/50], Step [40/68], Train Loss: 0.8422
+2025-07-01 01:16:52,946 - INFO - Epoch [37/50], Step [50/68], Train Loss: 0.8540
+2025-07-01 01:16:57,690 - INFO - Epoch [37/50], Step [60/68], Train Loss: 0.8161
+2025-07-01 01:17:03,038 - INFO - Epoch [37/50], Validation Loss: 0.8570, Validation Accuracy: 65.41%
+2025-07-01 01:17:08,055 - INFO - Epoch [38/50], Step [10/68], Train Loss: 0.8206
+2025-07-01 01:17:12,835 - INFO - Epoch [38/50], Step [20/68], Train Loss: 0.8622
+2025-07-01 01:17:17,580 - INFO - Epoch [38/50], Step [30/68], Train Loss: 0.8049
+2025-07-01 01:17:22,399 - INFO - Epoch [38/50], Step [40/68], Train Loss: 0.8285
+2025-07-01 01:17:27,144 - INFO - Epoch [38/50], Step [50/68], Train Loss: 0.8428
+2025-07-01 01:17:31,974 - INFO - Epoch [38/50], Step [60/68], Train Loss: 0.8234
+2025-07-01 01:17:37,293 - INFO - Epoch [38/50], Validation Loss: 0.8458, Validation Accuracy: 66.26%
+2025-07-01 01:17:37,306 - INFO - Saved best model with validation loss: 0.8458
+2025-07-01 01:17:42,140 - INFO - Epoch [39/50], Step [10/68], Train Loss: 0.8190
+2025-07-01 01:17:46,925 - INFO - Epoch [39/50], Step [20/68], Train Loss: 0.8324
+2025-07-01 01:17:51,689 - INFO - Epoch [39/50], Step [30/68], Train Loss: 0.8388
+2025-07-01 01:17:56,468 - INFO - Epoch [39/50], Step [40/68], Train Loss: 0.7955
+2025-07-01 01:18:01,246 - INFO - Epoch [39/50], Step [50/68], Train Loss: 0.8117
+2025-07-01 01:18:06,028 - INFO - Epoch [39/50], Step [60/68], Train Loss: 0.8373
+2025-07-01 01:18:11,459 - INFO - Epoch [39/50], Validation Loss: 0.8568, Validation Accuracy: 66.18%
+2025-07-01 01:18:16,444 - INFO - Epoch [40/50], Step [10/68], Train Loss: 0.8413
+2025-07-01 01:18:21,165 - INFO - Epoch [40/50], Step [20/68], Train Loss: 0.8212
+2025-07-01 01:18:25,899 - INFO - Epoch [40/50], Step [30/68], Train Loss: 0.8269
+2025-07-01 01:18:30,671 - INFO - Epoch [40/50], Step [40/68], Train Loss: 0.8182
+2025-07-01 01:18:35,442 - INFO - Epoch [40/50], Step [50/68], Train Loss: 0.8452
+2025-07-01 01:18:40,205 - INFO - Epoch [40/50], Step [60/68], Train Loss: 0.8213
+2025-07-01 01:18:45,542 - INFO - Epoch [40/50], Validation Loss: 0.8758, Validation Accuracy: 63.72%
+2025-07-01 01:18:50,449 - INFO - Epoch [41/50], Step [10/68], Train Loss: 0.8696
+2025-07-01 01:18:55,215 - INFO - Epoch [41/50], Step [20/68], Train Loss: 0.8339
+2025-07-01 01:18:59,989 - INFO - Epoch [41/50], Step [30/68], Train Loss: 0.8246
+2025-07-01 01:19:04,770 - INFO - Epoch [41/50], Step [40/68], Train Loss: 0.8556
+2025-07-01 01:19:09,570 - INFO - Epoch [41/50], Step [50/68], Train Loss: 0.8189
+2025-07-01 01:19:14,335 - INFO - Epoch [41/50], Step [60/68], Train Loss: 0.7731
+2025-07-01 01:19:19,687 - INFO - Epoch [41/50], Validation Loss: 0.8842, Validation Accuracy: 63.30%
+2025-07-01 01:19:24,525 - INFO - Epoch [42/50], Step [10/68], Train Loss: 0.8763
+2025-07-01 01:19:29,261 - INFO - Epoch [42/50], Step [20/68], Train Loss: 0.8580
+2025-07-01 01:19:34,045 - INFO - Epoch [42/50], Step [30/68], Train Loss: 0.8324
+2025-07-01 01:19:38,869 - INFO - Epoch [42/50], Step [40/68], Train Loss: 0.8268
+2025-07-01 01:19:43,674 - INFO - Epoch [42/50], Step [50/68], Train Loss: 0.8050
+2025-07-01 01:19:48,425 - INFO - Epoch [42/50], Step [60/68], Train Loss: 0.8095
+2025-07-01 01:19:53,811 - INFO - Epoch [42/50], Validation Loss: 0.8459, Validation Accuracy: 66.38%
+2025-07-01 01:19:58,659 - INFO - Epoch [43/50], Step [10/68], Train Loss: 0.8018
+2025-07-01 01:20:03,405 - INFO - Epoch [43/50], Step [20/68], Train Loss: 0.8422
+2025-07-01 01:20:08,207 - INFO - Epoch [43/50], Step [30/68], Train Loss: 0.8198
+2025-07-01 01:20:13,005 - INFO - Epoch [43/50], Step [40/68], Train Loss: 0.8313
+2025-07-01 01:20:17,784 - INFO - Epoch [43/50], Step [50/68], Train Loss: 0.8437
+2025-07-01 01:20:22,532 - INFO - Epoch [43/50], Step [60/68], Train Loss: 0.8239
+2025-07-01 01:20:27,909 - INFO - Epoch [43/50], Validation Loss: 0.8370, Validation Accuracy: 66.57%
+2025-07-01 01:20:27,929 - INFO - Saved best model with validation loss: 0.8370
+2025-07-01 01:20:32,767 - INFO - Epoch [44/50], Step [10/68], Train Loss: 0.8467
+2025-07-01 01:20:37,504 - INFO - Epoch [44/50], Step [20/68], Train Loss: 0.8251
+2025-07-01 01:20:42,259 - INFO - Epoch [44/50], Step [30/68], Train Loss: 0.8557
+2025-07-01 01:20:47,082 - INFO - Epoch [44/50], Step [40/68], Train Loss: 0.8492
+2025-07-01 01:20:51,842 - INFO - Epoch [44/50], Step [50/68], Train Loss: 0.8328
+2025-07-01 01:20:56,569 - INFO - Epoch [44/50], Step [60/68], Train Loss: 0.8030
+2025-07-01 01:21:01,899 - INFO - Epoch [44/50], Validation Loss: 0.8552, Validation Accuracy: 65.59%
+2025-07-01 01:21:06,768 - INFO - Epoch [45/50], Step [10/68], Train Loss: 0.8235
+2025-07-01 01:21:11,523 - INFO - Epoch [45/50], Step [20/68], Train Loss: 0.8030
+2025-07-01 01:21:16,295 - INFO - Epoch [45/50], Step [30/68], Train Loss: 0.8392
+2025-07-01 01:21:21,050 - INFO - Epoch [45/50], Step [40/68], Train Loss: 0.8123
+2025-07-01 01:21:25,851 - INFO - Epoch [45/50], Step [50/68], Train Loss: 0.8335
+2025-07-01 01:21:30,606 - INFO - Epoch [45/50], Step [60/68], Train Loss: 0.7980
+2025-07-01 01:21:36,084 - INFO - Epoch [45/50], Validation Loss: 0.8350, Validation Accuracy: 67.13%
+2025-07-01 01:21:36,090 - INFO - Saved best model with validation loss: 0.8350
+2025-07-01 01:21:40,978 - INFO - Epoch [46/50], Step [10/68], Train Loss: 0.7910
+2025-07-01 01:21:45,725 - INFO - Epoch [46/50], Step [20/68], Train Loss: 0.8365
+2025-07-01 01:21:50,473 - INFO - Epoch [46/50], Step [30/68], Train Loss: 0.8295
+2025-07-01 01:21:55,220 - INFO - Epoch [46/50], Step [40/68], Train Loss: 0.8997
+2025-07-01 01:21:59,980 - INFO - Epoch [46/50], Step [50/68], Train Loss: 0.9861
+2025-07-01 01:22:04,881 - INFO - Epoch [46/50], Step [60/68], Train Loss: 0.9108
+2025-07-01 01:22:10,186 - INFO - Epoch [46/50], Validation Loss: 0.9956, Validation Accuracy: 59.05%
+2025-07-01 01:22:15,009 - INFO - Epoch [47/50], Step [10/68], Train Loss: 0.9930
+2025-07-01 01:22:19,763 - INFO - Epoch [47/50], Step [20/68], Train Loss: 0.9380
+2025-07-01 01:22:24,653 - INFO - Epoch [47/50], Step [30/68], Train Loss: 0.8739
+2025-07-01 01:22:29,411 - INFO - Epoch [47/50], Step [40/68], Train Loss: 0.8556
+2025-07-01 01:22:34,147 - INFO - Epoch [47/50], Step [50/68], Train Loss: 0.8600
+2025-07-01 01:22:38,906 - INFO - Epoch [47/50], Step [60/68], Train Loss: 0.8450
+2025-07-01 01:22:44,263 - INFO - Epoch [47/50], Validation Loss: 0.8531, Validation Accuracy: 66.52%
+2025-07-01 01:22:49,112 - INFO - Epoch [48/50], Step [10/68], Train Loss: 0.8076
+2025-07-01 01:22:53,932 - INFO - Epoch [48/50], Step [20/68], Train Loss: 0.8565
+2025-07-01 01:22:58,693 - INFO - Epoch [48/50], Step [30/68], Train Loss: 0.8713
+2025-07-01 01:23:03,451 - INFO - Epoch [48/50], Step [40/68], Train Loss: 0.8492
+2025-07-01 01:23:08,237 - INFO - Epoch [48/50], Step [50/68], Train Loss: 0.8429
+2025-07-01 01:23:13,026 - INFO - Epoch [48/50], Step [60/68], Train Loss: 0.8476
+2025-07-01 01:23:18,332 - INFO - Epoch [48/50], Validation Loss: 0.8423, Validation Accuracy: 66.47%
+2025-07-01 01:23:23,163 - INFO - Epoch [49/50], Step [10/68], Train Loss: 0.8287
+2025-07-01 01:23:27,935 - INFO - Epoch [49/50], Step [20/68], Train Loss: 0.8474
+2025-07-01 01:23:32,756 - INFO - Epoch [49/50], Step [30/68], Train Loss: 0.8199
+2025-07-01 01:23:37,513 - INFO - Epoch [49/50], Step [40/68], Train Loss: 0.8207
+2025-07-01 01:23:42,262 - INFO - Epoch [49/50], Step [50/68], Train Loss: 0.8370
+2025-07-01 01:23:47,125 - INFO - Epoch [49/50], Step [60/68], Train Loss: 0.8263
+2025-07-01 01:23:52,447 - INFO - Epoch [49/50], Validation Loss: 0.8251, Validation Accuracy: 67.20%
+2025-07-01 01:23:52,454 - INFO - Saved best model with validation loss: 0.8251
+2025-07-01 01:23:57,387 - INFO - Epoch [50/50], Step [10/68], Train Loss: 0.8137
+2025-07-01 01:24:02,121 - INFO - Epoch [50/50], Step [20/68], Train Loss: 0.8077
+2025-07-01 01:24:06,871 - INFO - Epoch [50/50], Step [30/68], Train Loss: 0.8365
+2025-07-01 01:24:11,672 - INFO - Epoch [50/50], Step [40/68], Train Loss: 0.8746
+2025-07-01 01:24:16,435 - INFO - Epoch [50/50], Step [50/68], Train Loss: 0.8404
+2025-07-01 01:24:21,213 - INFO - Epoch [50/50], Step [60/68], Train Loss: 0.8319
+2025-07-01 01:24:26,595 - INFO - Epoch [50/50], Validation Loss: 0.8407, Validation Accuracy: 66.71%
+2025-07-01 01:24:26,606 - INFO - Loaded best model for testing
+2025-07-01 01:24:26,606 - INFO - Evaluating on test set...
+2025-07-01 01:24:28,386 - INFO - Test Loss: 0.8443, Test Accuracy: 67.53%
+2025-07-01 01:24:28,392 - INFO - Final model saved as shallow_cnn_eigenvectors_final.pth

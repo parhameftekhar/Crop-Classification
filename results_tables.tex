@@ -1,0 +1,65 @@
+\documentclass{article}
+\usepackage{booktabs}
+\usepackage{caption}
+
+\begin{document}
+
+\section*{Results Tables}
+
+\begin{table}[h]
+    \centering
+    \caption{Results for Crop 1}
+    \begin{tabular}{lcccc}
+        \toprule
+        Method & Precision & Recall & F1 Score & Accuracy \\
+        \midrule
+        Combinatorial Laplacian & 0.8994 & 0.9309 & 0.9149 & 0.9444 \\
+        Signed Laplacian & 0.9011 & 0.9316 & 0.9161 & 0.9452 \\
+        DeepLabV3 & 0.8779 & 0.9091 & 0.8932 & 0.9280 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Results for Crop 5}
+    \begin{tabular}{lcccc}
+        \toprule
+        Method & Precision & Recall & F1 Score & Accuracy \\
+        \midrule
+        Combinatorial Laplacian & 0.8197 & 0.9340 & 0.8731 & 0.9301 \\
+        Signed Laplacian & 0.8239 & 0.9363 & 0.8765 & 0.9321 \\
+        DeepLabV3 & 0.8515 & 0.8642 & 0.8578 & 0.9275 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Results for Crop 23}
+    \begin{tabular}{lcccc}
+        \toprule
+        Method & Precision & Recall & F1 Score & Accuracy \\
+        \midrule
+        Combinatorial Laplacian & 0.7009 & 0.9062 & 0.7905 & 0.9037 \\
+        Signed Laplacian & 0.7017 & 0.9083 & 0.7917 & 0.9042 \\
+        DeepLabV3 & 0.7803 & 0.8324 & 0.8054 & 0.9143 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Results for Crop 176}
+    \begin{tabular}{lcccc}
+        \toprule
+        Method & Precision & Recall & F1 Score & Accuracy \\
+        \midrule
+        Combinatorial Laplacian & 0.6707 & 0.8761 & 0.7597 & 0.8270 \\
+        Signed Laplacian & 0.6714 & 0.8775 & 0.7607 & 0.8277 \\
+        DeepLabV3 & 0.7200 & 0.6974 & 0.7078 & 0.8294 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\end{document} 
