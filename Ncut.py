@@ -24,7 +24,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 # Global configuration
-TARGET_CROP = 5  # The crop ID we're training to detect
+TARGET_CROP = 23  # The crop ID we're training to detect
 UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
 
 # Setup logging
@@ -80,6 +80,22 @@ def setup_test_loader():
     )
 
     return test_loader
+
+def setup_training_loader_for_centers():
+    # Setup training loader for feature centers calculation
+    train_loader = setup_training_loader(
+        path_to_train_data='./training_data/train_patches.npy',
+        unchanged_crops=UNCHANGED_CROPS,
+        target_crops=[TARGET_CROP],
+        train_batch_size=16,
+        crop_band_index=18,
+        device='cuda',
+        ignore_crops=None,
+        min_ratio=0.1,
+        max_ratio=0.9
+    )
+
+    return train_loader
 
 def setup_model(logger):
     features_extractor = FeatureExtractor(
@@ -191,7 +207,7 @@ def validate_model(features_extractor, data_loader, positive_center, negative_ce
 
 def run_validation():
     logger = setup_logging()
-    val_loader = setup_validation_loader()
+    train_loader = setup_training_loader_for_centers()  # Use training set for feature centers
     test_loader = setup_test_loader()
     features_extractor = setup_model(logger)
     
@@ -213,44 +229,30 @@ def run_validation():
     edges = edges.cpu().numpy()
     edge_i, edge_j = edges[:, 0], edges[:, 1]
     
-    # Calculate feature centers using validation data
-    positive_center, negative_center = features_extractor.calculate_feature_centers(val_loader)
+    # Calculate feature centers using training data
+    positive_center, negative_center = features_extractor.calculate_feature_centers(train_loader)
     
-    # Run validation on validation set
+    # Run test evaluation only
     logger.info("\n" + "=" * 50)
-    logger.info("VALIDATION SET EVALUATION")
+    logger.info("TEST SET EVALUATION")
     logger.info("=" * 50)
     
     d_star = 1.0
-    val_accuracy, val_f1 = validate_model(
-        features_extractor, val_loader, positive_center, negative_center,
-        d_star, order, edges, edge_i, edge_j, logger, "Validation"
-    )
-    
-    # Run validation on test set
-    logger.info("\n" + "=" * 50)
-    logger.info("TEST SET VALIDATION")
-    logger.info("=" * 50)
-    
     test_accuracy, test_f1 = validate_model(
         features_extractor, test_loader, positive_center, negative_center,
         d_star, order, edges, edge_i, edge_j, logger, "Test"
     )
     
-    logger.info(f"\nFinal Results:")
-    logger.info(f"Validation Accuracy: {val_accuracy:.4f}")
-    logger.info(f"Validation F1 Score: {val_f1:.4f}")
+    logger.info(f"\nFinal Test Results:")
     logger.info(f"Test Accuracy: {test_accuracy:.4f}")
     logger.info(f"Test F1 Score: {test_f1:.4f}")
     
     # Add results summary to log file
     logger.info("\n" + "=" * 50)
-    logger.info("FINAL RESULTS SUMMARY")
+    logger.info("FINAL TEST RESULTS SUMMARY")
     logger.info("=" * 50)
     logger.info(f"Target Crop: {TARGET_CROP}")
     logger.info(f"Method: Normalized Cut")
-    logger.info(f"Validation Accuracy: {val_accuracy:.4f}")
-    logger.info(f"Validation F1 Score: {val_f1:.4f}")
     logger.info(f"Test Accuracy: {test_accuracy:.4f}")
     logger.info(f"Test F1 Score: {test_f1:.4f}")
     logger.info("=" * 50)
