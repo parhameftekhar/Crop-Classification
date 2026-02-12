@@ -835,3 +835,153 @@ def setup_validation_loader(
     
     return valid_loader
 
+
+class CropMultiClassDataset(Dataset):
+    """
+    A PyTorch Dataset for multi-class crop classification.
+    
+    This dataset creates pixel-wise multi-class labels (0 to N-1).
+    Class 0 is background (crops not in target list),
+    Classes 1-N are the target crops in the order provided.
+    
+    Args:
+        patches (numpy.ndarray): Array of patches with shape (n, h, w, c)
+        target_crops (list): List of crop IDs to classify (will be mapped to classes 1-N)
+        crop_band_index (int): Index of the band containing crop data (default: 18)
+        input_bands (list): List of band indices to use as input features (default: all bands except crop band)
+        transform (callable, optional): Optional transform to be applied on a sample
+        device (str or torch.device): Device to move tensors to (default: 'cpu')
+    """
+    def __init__(self, patches, target_crops, crop_band_index=18, 
+                 input_bands=None, transform=None, device='cpu'):
+        self.patches = torch.from_numpy(patches).float()
+        self.target_crops = target_crops
+        self.crop_band_index = crop_band_index
+        self.transform = transform
+        self.device = device
+        
+        # Create label mapping: -1 -> 0 (background), crop_ids -> 1, 2, 3, ...
+        self.label_map = {-1: 0}  # Background class
+        for idx, crop_id in enumerate(target_crops):
+            self.label_map[crop_id] = idx + 1
+        
+        self.num_classes = len(target_crops) + 1  # +1 for background
+        
+        # If input_bands is not specified, use all bands except the crop band
+        if input_bands is None:
+            self.input_bands = list(range(self.patches.shape[-1]))
+            self.input_bands.remove(crop_band_index)
+        else:
+            self.input_bands = input_bands
+        
+        # Calculate pixel-wise multi-class labels for each patch
+        self.labels = self._calculate_pixel_labels()
+        
+        # Move data to device
+        self.patches = self.patches.to(device)
+        self.labels = self.labels.to(device)
+        
+        print(f"Multi-class dataset loaded with {len(self)} patches")
+        print(f"Number of classes: {self.num_classes} (0=background, 1-{self.num_classes-1}=target crops)")
+        print(f"Label mapping: {self.label_map}")
+        
+        # Print class distribution
+        for class_id in range(self.num_classes):
+            count = torch.sum(self.labels == class_id).item()
+            print(f"  Class {class_id}: {count} pixels")
+    
+    def _calculate_pixel_labels(self):
+        """
+        Calculate pixel-wise multi-class labels for each patch.
+        
+        Returns:
+            torch.Tensor: Tensor of pixel-wise labels with shape (n, h, w) where each pixel is 0 to N-1
+        """
+        # Extract the crop data layer
+        crop_data = self.patches[:, :, :, self.crop_band_index]
+        
+        # Initialize labels array with zeros (background class)
+        labels = torch.zeros_like(crop_data, dtype=torch.long)
+        
+        # Map each crop ID to its corresponding class label
+        for crop_id, class_label in self.label_map.items():
+            if crop_id != -1:  # Skip background, already set to 0
+                mask = (crop_data == crop_id)
+                labels[mask] = class_label
+        
+        return labels
+    
+    def __len__(self):
+        return len(self.patches)
+    
+    def __getitem__(self, idx):
+        # Get the patch and its pixel-wise labels
+        patch = self.patches[idx]
+        pixel_labels = self.labels[idx]
+        
+        # Extract only the specified input bands
+        features = patch[:, :, self.input_bands]
+        
+        # Scale features by 0.0001 and clip to [0,1] range
+        features = features * 0.0001  # Scale by 0.0001
+        features = torch.clamp(features, min=0.0, max=1.0)  # Clip to [0,1] range
+        
+        # Apply transform if specified
+        if self.transform:
+            features = self.transform(features)
+        
+        return features, pixel_labels
+
+
+def setup_multiclass_loader(
+    path_to_data: str,
+    unchanged_crops: list,
+    target_crops: list,
+    batch_size: int = 1,
+    crop_band_index: int = 18,
+    device: str = 'cuda'
+) -> DataLoader:
+    """
+    Set up a multi-class data loader with necessary preprocessing steps.
+    
+    This function:
+    1. Loads the data
+    2. Applies create_modified_crop_labels to set non-target crops to -1
+    3. Creates a multi-class dataset that maps crop IDs to class labels 0-N
+    4. Returns a DataLoader
+    
+    Args:
+        path_to_data (str): Path to the data numpy file
+        unchanged_crops (list): List of crop IDs that should remain unchanged
+        target_crops (list): List of crop IDs to classify (will be classes 1-N)
+        batch_size (int): Batch size for the loader (default: 1)
+        crop_band_index (int): Index of the crop band in the data (default: 18)
+        device (str): Device to load the data on ('cuda' or 'cpu')
+        
+    Returns:
+        DataLoader: Configured multi-class data loader
+    """
+    # Load data
+    data = np.load(path_to_data)
+    
+    # Modify crop labels: keep target crops, set others to -1
+    data = create_modified_crop_labels(
+        data,
+        unchanged_crops=unchanged_crops,
+        other_value=-1,
+        crop_band_index=crop_band_index
+    )
+    
+    # Create multi-class dataset
+    dataset = CropMultiClassDataset(
+        data,
+        target_crops=target_crops,
+        crop_band_index=crop_band_index,
+        device=device
+    )
+    
+    # Create dataloader
+    loader = DataLoader(dataset, batch_size=batch_size)
+    
+    return loader
+
