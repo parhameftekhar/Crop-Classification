@@ -14,15 +14,17 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from data_manager import setup_multiclass_loader
 from tqdm import tqdm
 import logging
+from torch.utils.tensorboard import SummaryWriter
 
 # Data setup
 TARGET_CROPS = [1, 5, 23, 176]  # Corn, Soybean, Spring Wheat, Grassland/Pasture
 UNCHANGED_CROPS = TARGET_CROPS  # Keep these crops unchanged
 NUM_CLASSES = len(TARGET_CROPS) + 1  # +1 for background
 
-# Create directories for logs and checkpoints
+# Create directories for logs, checkpoints, and TensorBoard runs
 os.makedirs('logs/benchmark/multi_case', exist_ok=True)
 os.makedirs('checkpoints/benchmark/multi_case', exist_ok=True)
+os.makedirs('tensorboard/benchmark/multi_case', exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
@@ -34,6 +36,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# TensorBoard writer
+writer = SummaryWriter(log_dir=f'tensorboard/benchmark/multi_case/segmenter')
 
 # Model setup
 logger.info(f'Initializing Segmenter model for {NUM_CLASSES}-class classification')
@@ -60,7 +65,7 @@ except Exception as e:
 # Modify the model to accept 18 input channels
 logger.info('Modifying model input layer for 18 channels')
 if hasattr(model, 'segmenter') and hasattr(model.segmenter, 'embeddings'):
-    # For Segmenter models
+    # For Segmenter models (ViT-based)
     original_conv = model.segmenter.embeddings.patch_embeddings.projection
     new_conv = torch.nn.Conv2d(
         in_channels=18,
@@ -71,21 +76,27 @@ if hasattr(model, 'segmenter') and hasattr(model.segmenter, 'embeddings'):
         bias=original_conv.bias is not None,
     )
     model.segmenter.embeddings.patch_embeddings.projection = new_conv
+    model.config.num_channels = 18
     logger.info('Modified Segmenter input layer for 18 channels')
-    
-elif hasattr(model, 'segformer') and hasattr(model.segformer, 'embeddings'):
-    # For SegFormer models (fallback)
-    original_conv = model.segformer.embeddings.patch_embeddings.projection
-    new_conv = torch.nn.Conv2d(
+
+elif hasattr(model, 'segformer') and hasattr(model.segformer, 'encoder'):
+    # For SegFormer models (fallback):
+    # patch_embeddings is a ModuleList; only index [0] processes the raw image.
+    # Each OverlapPatchEmbedding stores its conv as self.proj (not .projection).
+    first_embed = model.segformer.encoder.patch_embeddings[0]
+    original_proj = first_embed.proj
+    new_proj = torch.nn.Conv2d(
         in_channels=18,
-        out_channels=original_conv.out_channels,
-        kernel_size=original_conv.kernel_size,
-        stride=original_conv.stride,
-        padding=original_conv.padding,
-        bias=original_conv.bias is not None,
+        out_channels=original_proj.out_channels,
+        kernel_size=original_proj.kernel_size,
+        stride=original_proj.stride,
+        padding=original_proj.padding,
+        bias=original_proj.bias is not None,
     )
-    model.segformer.embeddings.patch_embeddings.projection = new_conv
-    logger.info('Modified SegFormer input layer for 18 channels')
+    first_embed.proj = new_proj
+    model.config.num_channels = 18
+    logger.info('Modified SegFormer (fallback) input layer for 18 channels')
+
 
 logger.info(f'Target crops: {TARGET_CROPS}')
 logger.info(f'Number of classes: {NUM_CLASSES} (0=background, 1-{NUM_CLASSES-1}=target crops)')
@@ -267,7 +278,7 @@ def train_epoch(model, train_loader, criterion, optimizer, device, num_classes):
     avg_acc = total_accuracy / batches
     
     logger.info(f'Epoch {epoch+1}/{num_epochs} - Training - Loss: {avg_loss:.4f}, Accuracy: {avg_acc:.4f}, mIoU: {mean_iou:.4f}')
-    return avg_loss, avg_acc, mean_iou
+    return avg_loss, avg_acc, mean_iou, confusion_matrix
 
 # Validation function
 def validate(model, val_loader, criterion, device, num_classes):
@@ -326,7 +337,7 @@ def validate(model, val_loader, criterion, device, num_classes):
     logger.info(f'Per-class Recall: {", ".join([f"Class {i}: {rec:.4f}" for i, rec in enumerate(recalls)])}')
     logger.info(f'Per-class F1-Score: {", ".join([f"Class {i}: {f1:.4f}" for i, f1 in enumerate(f1_scores)])}')
     
-    return avg_loss, avg_acc, mean_iou
+    return avg_loss, avg_acc, mean_iou, ious, precisions, recalls, f1_scores
 
 # Training loop
 num_epochs = 100
@@ -335,10 +346,26 @@ logger.info(f'Starting training for {num_epochs} epochs')
 
 epoch_pbar = tqdm(range(num_epochs), desc='Epochs')
 for epoch in epoch_pbar:
-    train_loss, train_acc, train_miou = train_epoch(model, train_loader, criterion, optimizer, device, NUM_CLASSES)
-    val_loss, val_acc, val_miou = validate(model, val_loader, criterion, device, NUM_CLASSES)
+    train_loss, train_acc, train_miou, train_cm = train_epoch(model, train_loader, criterion, optimizer, device, NUM_CLASSES)
+    val_loss, val_acc, val_miou, val_ious, val_precs, val_recs, val_f1s = validate(model, val_loader, criterion, device, NUM_CLASSES)
     
+    current_lr = optimizer.param_groups[0]['lr']
     scheduler.step()
+    
+    # ── TensorBoard logging ──────────────────────────────────────────────
+    writer.add_scalar('Loss/train', train_loss, epoch)
+    writer.add_scalar('Loss/val', val_loss, epoch)
+    writer.add_scalar('Accuracy/train', train_acc, epoch)
+    writer.add_scalar('Accuracy/val', val_acc, epoch)
+    writer.add_scalar('mIoU/train', train_miou, epoch)
+    writer.add_scalar('mIoU/val', val_miou, epoch)
+    writer.add_scalar('LearningRate', current_lr, epoch)
+    for cls_id, (iou, prec, rec, f1) in enumerate(zip(val_ious, val_precs, val_recs, val_f1s)):
+        writer.add_scalar(f'PerClass_IoU/class_{cls_id}', iou, epoch)
+        writer.add_scalar(f'PerClass_Precision/class_{cls_id}', prec, epoch)
+        writer.add_scalar(f'PerClass_Recall/class_{cls_id}', rec, epoch)
+        writer.add_scalar(f'PerClass_F1/class_{cls_id}', f1, epoch)
+    # ────────────────────────────────────────────────────────────────────
     
     epoch_pbar.set_postfix({
         'train_loss': f'{train_loss:.4f}',
@@ -359,8 +386,19 @@ model.load_state_dict(torch.load(f'checkpoints/benchmark/multi_case/best_segment
 logger.info('Loaded best model for testing')
 
 # Test the model
-test_loss, test_acc, test_miou = validate(model, test_loader, criterion, device, NUM_CLASSES)
+test_loss, test_acc, test_miou, test_ious, test_precs, test_recs, test_f1s = validate(model, test_loader, criterion, device, NUM_CLASSES)
 logger.info('Test Results:')
 logger.info(f'Test Loss: {test_loss:.4f}')
 logger.info(f'Test Accuracy: {test_acc:.4f}')
 logger.info(f'Test mIoU: {test_miou:.4f}')
+
+# Log final test metrics to TensorBoard
+writer.add_scalar('Test/Loss', test_loss, 0)
+writer.add_scalar('Test/Accuracy', test_acc, 0)
+writer.add_scalar('Test/mIoU', test_miou, 0)
+for cls_id, (iou, prec, rec, f1) in enumerate(zip(test_ious, test_precs, test_recs, test_f1s)):
+    writer.add_scalar(f'Test_PerClass_IoU/class_{cls_id}', iou, 0)
+    writer.add_scalar(f'Test_PerClass_F1/class_{cls_id}', f1, 0)
+
+writer.close()
+logger.info('TensorBoard writer closed. Run: tensorboard --logdir=tensorboard/benchmark/multi_case')
