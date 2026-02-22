@@ -23,6 +23,7 @@ MANIFEST
 
 # Jupyter Notebook
 .ipynb_checkpoints
+*.ipynb
 
 # PyTorch
 *.pth
@@ -51,6 +52,8 @@ checkpoints/
 logs/
 ensemble/
 visualizations/
+unnecessary_scripts/
+tensorboard/
 
 # Large files
 memory
@@ -84,4 +87,7 @@ Thumbs.db
 
 # Temporary files
 *.tmp
-*.temp 
+*.temp
+
+# Scripts
+*.sh 
