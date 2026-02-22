@@ -24,7 +24,7 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
 # Global configuration
-TARGET_CROP = 1  # The crop ID we're training to detect
+TARGET_CROP = 23  # The crop ID we're training to detect
 UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
 ALPHA_VALUES = [0.8, 0.85, 0.9, 0.95]  # Alpha values to test
 
@@ -230,7 +230,7 @@ def run_validation():
     # Load trained model if checkpoint exists
     checkpoint_path = f'checkpoints/v2/crop{TARGET_CROP}_vs_all.pth'
     if os.path.exists(checkpoint_path):
-        features_extractor = torch.load(checkpoint_path, map_location='cuda')
+        features_extractor = torch.load(checkpoint_path, map_location='cuda', weights_only=False)
         logger.info(f"Loaded trained model from: {checkpoint_path}")
     else:
         logger.warning(f"No checkpoint found at {checkpoint_path}. Using untrained model.")

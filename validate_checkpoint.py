@@ -1,20 +1,31 @@
 import numpy as np
 from model import FeatureExtractor
 from data_manager import setup_training_loader
-from model import modified_sigmoid, create_coo_sparse_matrix
+from model import modified_sigmoid, create_coo_sparse_matrix, smallest_eigenpair_via_shifted_power
 from tqdm import tqdm
-from scipy.sparse import diags
+from scipy.sparse import diags, eye
 from scipy.sparse.linalg import eigsh
 from sklearn.metrics import f1_score, confusion_matrix
 import torch
 from utils import correct_pred_sign
+import random
 
-TARGET_CROP = 176
+# Set random seeds for reproducibility
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+
+TARGET_CROP = 23
 
 def setup_data_loader():
     # Setup validation loader
     val_loader = setup_training_loader(
-        path_to_train_data='./training_data/val_patches.npy',
+        path_to_train_data='./training_data/test_patches.npy',
         unchanged_crops=[1, 5, 23, 176],
         target_crops=[TARGET_CROP],
         train_batch_size=1,
@@ -72,14 +83,16 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
                     L = D - sparse_adjacency
                     
                     # Compute eigenvector and prediction
-                    _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
+                    # _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
+                    _, eigen_vector, _ = smallest_eigenpair_via_shifted_power(L, max_iter=100)
                     pred = np.sign(eigen_vector).flatten()
-                    pred = correct_pred_sign(pred, quadrant_features, positive_center, negative_center)
+                    sign_correct = correct_pred_sign(pred, quadrant_features, positive_center, negative_center)
+                    pred = sign_correct * pred
                     y = quadrant_label.cpu().numpy()
 
                     # Convert predictions and labels to binary (0 and 1)
-                    y_binary = (y == 1).astype(int)
-                    pred_binary = (pred == 1).astype(int)
+                    y_binary = (y == 1).astype(np.int32)
+                    pred_binary = (pred == 1).astype(np.int32)
                     
                     # Compute confusion matrix for this quadrant
                     quadrant_confusion = confusion_matrix(y_binary, pred_binary, labels=[0, 1])

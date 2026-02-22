@@ -1,19 +1,43 @@
-from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3
+# train_deeplabv3_multiclass.py
+
 import torch
+from torchvision.models.segmentation import deeplabv3_resnet50
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import os
-from data_manager import create_modified_crop_labels
+from data_manager import setup_multiclass_loader
 from tqdm import tqdm
 import logging
+import sys
+from torch.utils.tensorboard import SummaryWriter
+
+# Data setup
+TARGET_CROPS = [1, 5, 23, 176]  # Corn, Soybean, Spring Wheat, Grassland/Pasture
+UNCHANGED_CROPS = TARGET_CROPS  # Keep these crops unchanged
+NUM_CLASSES = len(TARGET_CROPS) + 1  # +1 for background
+
+# Create directories for logs, checkpoints, and TensorBoard runs
+os.makedirs('logs/benchmark/multi_case', exist_ok=True)
+os.makedirs('checkpoints/benchmark/multi_case', exist_ok=True)
+os.makedirs('tensorboard/benchmark/multi_case', exist_ok=True)
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='training.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'logs/benchmark/multi_case/training_deeplabv3_multiclass_{NUM_CLASSES}classes.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
+# TensorBoard writer
+writer = SummaryWriter(log_dir=f'tensorboard/benchmark/multi_case/deeplabv3')
+
 # Model setup
-weights = deeplabv3.DeepLabV3_ResNet50_Weights.COCO_WITH_VOC_LABELS_V1
-model = deeplabv3_resnet50(num_classes=5)
+logger.info(f'Initializing DeepLabV3_ResNet50 model for {NUM_CLASSES}-class classification')
+model = deeplabv3_resnet50(num_classes=NUM_CLASSES)
 
 # Modify the first convolution layer to accept 18 input channels
 original_conv = model.backbone.conv1
@@ -27,176 +51,159 @@ new_conv = torch.nn.Conv2d(
 )
 model.backbone.conv1 = new_conv
 
-# Dataset class
-class CropDataset(Dataset):
-    def __init__(self, data, transform=None):
-        self.data = data.astype(float)
-        self.transform = transform
-        
-        # Fixed mapping for known labels
-        self.label_map = {
-            -1: 0,  # background
-            1: 1,   # corn
-            5: 2,   # soybean
-            23: 3,  # spring wheat
-            176: 4  # grassland/pasture
-        }
-        self.num_classes = 5  # 5 classes including background
-        
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        # Get the image and label
-        image = self.data[idx, :, :, :-1]  # All bands except last one (label)
-        label = self.data[idx, :, :, -1]   # Last band is the label
-        
-        # Scale first 18 bands by 0.0001 and clip to [0,1]
-        image[:, :, :18] = np.clip(image[:, :, :18] * 0.0001, 0, 1)
-        
-        # Convert to torch tensors
-        image = torch.from_numpy(image).float()
-        
-        # Map labels to 0 to 4 range
-        label = np.vectorize(self.label_map.get)(label)
-        label = torch.from_numpy(label).long()
-        
-        if self.transform:
-            image = self.transform(image)
-            
-        return image, label
+logger.info(f'Target crops: {TARGET_CROPS}')
+logger.info(f'Number of classes: {NUM_CLASSES} (0=background, 1-{NUM_CLASSES-1}=target crops)')
 
-# Load data
-data_dir = './training_data'
-train_data = np.load(os.path.join(data_dir, 'train_patches.npy'))
-valid_data = np.load(os.path.join(data_dir, 'val_patches.npy'))
-test_data = np.load(os.path.join(data_dir, 'test_patches.npy'))
+# Setup data loaders
+logger.info('Setting up data loaders')
+train_loader = setup_multiclass_loader(
+    path_to_data='./training_data/train_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=TARGET_CROPS,
+    batch_size=16,
+    crop_band_index=18,
+    device='cuda'
+)
 
-unchanged_crops = [1, 5, 23, 176]
-train_data = create_modified_crop_labels(train_data, unchanged_crops=unchanged_crops)
-valid_data = create_modified_crop_labels(valid_data, unchanged_crops=unchanged_crops)
-test_data = create_modified_crop_labels(test_data, unchanged_crops=unchanged_crops)
+val_loader = setup_multiclass_loader(
+    path_to_data='./training_data/val_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=TARGET_CROPS,
+    batch_size=16,
+    crop_band_index=18,
+    device='cuda'
+)
 
-# Create datasets
-train_dataset = CropDataset(train_data)
-val_dataset = CropDataset(valid_data)
-test_dataset = CropDataset(test_data)
-
-# Log dataset information
-logger.info(f'Number of classes: {train_dataset.num_classes}')
-logger.info(f'Label mapping: {train_dataset.label_map}')
-
-# Create data loaders
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=4)
-val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=4)
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False, num_workers=4)
-
-# Log dataset sizes and sample shapes
-logger.info(f'Training samples: {len(train_dataset)}')
-logger.info(f'Validation samples: {len(val_dataset)}')
-logger.info(f'Test samples: {len(test_dataset)}')
-
-# Get and log shape of a single sample
-sample_image, sample_label = next(iter(train_loader))
-logger.info(f'Image shape: {sample_image.shape}')
-logger.info(f'Label shape: {sample_label.shape}')
-logger.info(f'Unique labels in sample: {torch.unique(sample_label)}')
+test_loader = setup_multiclass_loader(
+    path_to_data='./training_data/test_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=TARGET_CROPS,
+    batch_size=16,
+    crop_band_index=18,
+    device='cuda'
+)
 
 # Training setup
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = model.to(device)
+logger.info(f'Training on device: {device}')
 
 # Loss function and optimizer
 criterion = torch.nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
+
+# Metrics functions (standardized across benchmark scripts)
+def accumulate_confusion_matrix(outputs, labels, num_classes, confusion_matrix):
+    _, predicted = torch.max(outputs, 1)
+    for class_id in range(num_classes):
+        pred_mask = (predicted == class_id)
+        true_mask = (labels == class_id)
+        tp = (pred_mask & true_mask).sum().item()
+        fp = (pred_mask & ~true_mask).sum().item()
+        fn = (~pred_mask & true_mask).sum().item()
+        confusion_matrix['tp'][class_id] += tp
+        confusion_matrix['fp'][class_id] += fp
+        confusion_matrix['fn'][class_id] += fn
+
+def compute_metrics_from_confusion_matrix(confusion_matrix, num_classes):
+    tp = confusion_matrix['tp']
+    fp = confusion_matrix['fp']
+    fn = confusion_matrix['fn']
+    ious, precisions, recalls, f1_scores = [], [], [], []
+    for class_id in range(num_classes):
+        union = tp[class_id] + fp[class_id] + fn[class_id]
+        ious.append(tp[class_id] / union if union > 0 else 0.0)
+        precisions.append(tp[class_id] / (tp[class_id] + fp[class_id]) if (tp[class_id] + fp[class_id]) > 0 else 0.0)
+        recalls.append(tp[class_id] / (tp[class_id] + fn[class_id]) if (tp[class_id] + fn[class_id]) > 0 else 0.0)
+        p, r = precisions[-1], recalls[-1]
+        f1_scores.append(2 * (p * r) / (p + r) if (p + r) > 0 else 0.0)
+    return np.mean(ious), ious, np.mean(precisions), precisions, np.mean(recalls), recalls, np.mean(f1_scores), f1_scores
+
+def calculate_accuracy(outputs, labels):
+    _, predicted = torch.max(outputs, 1)
+    return (predicted == labels).sum().item() / labels.numel()
 
 # Training function
-def train_epoch(model, train_loader, criterion, optimizer, device):
+def train_epoch(model, train_loader, criterion, optimizer, device, num_classes):
     model.train()
-    total_loss = 0
-    correct = 0
-    total_pixels = 0
-    
+    total_loss, total_accuracy, batches = 0, 0, 0
+    confusion_matrix = {'tp': np.zeros(num_classes), 'fp': np.zeros(num_classes), 'fn': np.zeros(num_classes)}
     pbar = tqdm(train_loader, desc='Training')
     for images, labels in pbar:
-        images = images.permute(0, 3, 1, 2).to(device)  # Change to (B, C, H, W)
+        images = images.permute(0, 3, 1, 2).to(device)
         labels = labels.to(device)
-        
         outputs = model(images)['out']
         loss = criterion(outputs, labels)
-        
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        
-        _, predicted = torch.max(outputs, 1)
-        correct += (predicted == labels).sum().item()
-        total_pixels += labels.numel()
+        accuracy = calculate_accuracy(outputs, labels)
+        accumulate_confusion_matrix(outputs, labels, num_classes, confusion_matrix)
         total_loss += loss.item()
-        
-        pbar.set_postfix({
-            'loss': f'{loss.item():.4f}',
-            'acc': f'{(predicted == labels).float().mean().item():.4f}'
-        })
-    
-    return total_loss / len(train_loader), correct / total_pixels
+        total_accuracy += accuracy
+        batches += 1
+        pbar.set_postfix({'loss': f'{loss.item():.4f}', 'acc': f'{accuracy:.4f}'})
+    mean_iou, _, _, _, _, _, _, _ = compute_metrics_from_confusion_matrix(confusion_matrix, num_classes)
+    return total_loss / batches, total_accuracy / batches, mean_iou
 
 # Validation function
-def validate(model, val_loader, criterion, device):
+def validate(model, val_loader, criterion, device, num_classes):
     model.eval()
-    total_loss = 0
-    correct = 0
-    total_pixels = 0
-    
+    total_loss, total_accuracy, batches = 0, 0, 0
+    confusion_matrix = {'tp': np.zeros(num_classes), 'fp': np.zeros(num_classes), 'fn': np.zeros(num_classes)}
     pbar = tqdm(val_loader, desc='Validation')
     with torch.no_grad():
         for images, labels in pbar:
-            images = images.permute(0, 3, 1, 2).to(device)  # Change to (B, C, H, W)
+            images = images.permute(0, 3, 1, 2).to(device)
             labels = labels.to(device)
-            
             outputs = model(images)['out']
             loss = criterion(outputs, labels)
-            
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == labels).sum().item()
-            total_pixels += labels.numel()
+            accuracy = calculate_accuracy(outputs, labels)
+            accumulate_confusion_matrix(outputs, labels, num_classes, confusion_matrix)
             total_loss += loss.item()
-            
-            pbar.set_postfix({
-                'loss': f'{loss.item():.4f}',
-                'acc': f'{(predicted == labels).float().mean().item():.4f}'
-            })
-    
-    return total_loss / len(val_loader), correct / total_pixels
+            total_accuracy += accuracy
+            batches += 1
+            pbar.set_postfix({'loss': f'{loss.item():.4f}', 'acc': f'{accuracy:.4f}'})
+    m_iou, ious, m_prec, precs, m_rec, recs, m_f1, f1s = compute_metrics_from_confusion_matrix(confusion_matrix, num_classes)
+    return total_loss/batches, total_accuracy/batches, m_iou, ious, precs, recs, f1s
 
 # Training loop
-num_epochs = 300
-best_val_acc = 0.0
-
-epoch_pbar = tqdm(range(num_epochs), desc='Epochs')
-for epoch in epoch_pbar:
-    train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
-    val_loss, val_acc = validate(model, val_loader, criterion, device)
-    
+num_epochs = 100
+best_val_miou = 0.0
+logger.info(f'Starting training for {num_epochs} epochs')
+for epoch in range(num_epochs):
+    train_loss, train_acc, train_miou = train_epoch(model, train_loader, criterion, optimizer, device, NUM_CLASSES)
+    val_loss, val_acc, val_miou, v_ious, v_precs, v_recs, v_f1s = validate(model, val_loader, criterion, device, NUM_CLASSES)
+    curr_lr = optimizer.param_groups[0]['lr']
     scheduler.step()
     
-    epoch_pbar.set_postfix({
-        'train_loss': f'{train_loss:.4f}',
-        'train_acc': f'{train_acc:.4f}',
-        'val_loss': f'{val_loss:.4f}',
-        'val_acc': f'{val_acc:.4f}'
-    })
+    # Logging
+    writer.add_scalar('Loss/train', train_loss, epoch)
+    writer.add_scalar('Loss/val', val_loss, epoch)
+    writer.add_scalar('Accuracy/train', train_acc, epoch)
+    writer.add_scalar('Accuracy/val', val_acc, epoch)
+    writer.add_scalar('mIoU/train', train_miou, epoch)
+    writer.add_scalar('mIoU/val', val_miou, epoch)
+    writer.add_scalar('LearningRate', curr_lr, epoch)
+    for i, (iou, prec, rec, f1) in enumerate(zip(v_ious, v_precs, v_recs, v_f1s)):
+        writer.add_scalar(f'PerClass_IoU/class_{i}', iou, epoch)
+        writer.add_scalar(f'PerClass_Precision/class_{i}', prec, epoch)
+        writer.add_scalar(f'PerClass_Recall/class_{i}', rec, epoch)
+        writer.add_scalar(f'PerClass_F1/class_{i}', f1, epoch)
     
-    if val_acc > best_val_acc:
-        best_val_acc = val_acc
-        torch.save(model.state_dict(), 'best_model.pth')
-        logger.info(f'New best model saved with validation accuracy: {val_acc:.4f}')
+    logger.info(f'Epoch {epoch+1}/{num_epochs} - Val mIoU: {val_miou:.4f}, Accuracy: {val_acc:.4f}')
+    if val_miou > best_val_miou:
+        best_val_miou = val_miou
+        torch.save(model.state_dict(), f'checkpoints/benchmark/multi_case/best_deeplabv3_model_multiclass_{NUM_CLASSES}classes.pth')
+        logger.info(f'New best model saved with validation mIoU: {val_miou:.4f}')
 
-# Load best model for testing
-model.load_state_dict(torch.load('best_model.pth'))
+# Test phase
+model.load_state_dict(torch.load(f'checkpoints/benchmark/multi_case/best_deeplabv3_model_multiclass_{NUM_CLASSES}classes.pth'))
+t_loss, t_acc, t_miou, t_ious, t_precs, t_recs, t_f1s = validate(model, test_loader, criterion, device, NUM_CLASSES)
+logger.info(f'Test Results: Loss: {t_loss:.4f}, Accuracy: {t_acc:.4f}, mIoU: {t_miou:.4f}')
+for i in range(NUM_CLASSES):
+    logger.info(f'Class {i} - IoU: {t_ious[i]:.4f}, F1: {t_f1s[i]:.4f}')
 
-# Test the model
-test_loss, test_acc = validate(model, test_loader, criterion, device)
-logger.info(f'Test Results:')
-logger.info(f'Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}') 
+writer.close()
+logger.info('Training complete.')

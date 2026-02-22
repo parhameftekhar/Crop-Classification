@@ -11,6 +11,10 @@ from data_manager import create_sparse_structure_from_images
 from scipy.sparse import diags
 from scipy.sparse.linalg import eigsh
 from utils import correct_pred_sign
+import numpy as np
+import scipy.sparse as sp
+import scipy.sparse.linalg as spla
+from typing import Optional
 
 class ShallowCNN(nn.Module):
     def __init__(self, num_block, kernel_size, stride, padding, num_channel_in, num_channel_internal, num_channel_out, device):
@@ -292,6 +296,126 @@ def create_coo_sparse_matrix(edges, weights, num_nodes=None):
     return sparse_matrix
 
 
+def gershgorin_lower_bound(A: sp.spmatrix) -> float:
+    """
+    Gershgorin lower bound for the smallest eigenvalue of a real symmetric matrix A.
+    Works for sparse matrices.
+    Returns L such that lambda_min(A) >= L.
+    """
+    A = A.tocsr()
+    n = A.shape[0]
+    diag = A.diagonal()
+
+    # Sum of absolute values per row
+    absA = abs(A)  # elementwise abs for sparse
+    row_abs_sum = np.array(absA.sum(axis=1)).ravel()
+
+    # Gershgorin: a_ii - sum_{j!=i} |a_ij| = a_ii - (sum_j |a_ij| - |a_ii|)
+    g = diag - (row_abs_sum - np.abs(diag))
+    return float(g.min())
+
+def smallest_eigenpair_shift_invert_cg_maxiter_only(
+    A: sp.spmatrix,
+    max_outer_iter: int = 100,
+    max_cg_iter: int = 100,
+    sigma: Optional[float] = None,
+    eps: Optional[float] = None,
+    seed: int = 0,
+):
+    """
+    Smallest algebraic eigenpair of symmetric sparse A via shift-invert + CG,
+    using ONLY max_iter (no tolerances).
+
+    - Outer loop runs exactly max_outer_iter iterations.
+    - Inner CG runs with maxiter=max_cg_iter each outer iteration.
+    - Returns final estimate and histories for diagnostics.
+
+    Returns: (lambda_est, x, info)
+    """
+    if A.shape[0] != A.shape[1]:
+        raise ValueError("A must be square.")
+    n = A.shape[0]
+    A = A.tocsr()
+
+    # Choose a safe sigma < lambda_min(A) using Gershgorin, unless provided.
+    if sigma is None:
+        L = gershgorin_lower_bound(A)
+        if eps is None:
+            eps = 1e-3 * max(1.0, abs(L))
+        sigma = L - eps
+
+    M = A - sigma * sp.eye(n, format="csr")
+
+    rng = np.random.default_rng(seed)
+    x = rng.standard_normal(n)
+    x /= np.linalg.norm(x)
+
+    lambdas = []
+    residual_norms = []
+    cg_infos = []
+
+    for _ in range(max_outer_iter):
+        # CG solve: M y = x, capped by max_cg_iter
+        y, cg_info = spla.cg(M, x, maxiter=max_cg_iter)
+        cg_infos.append(int(cg_info))
+
+        # Normalize
+        ynorm = np.linalg.norm(y)
+        if ynorm == 0 or not np.isfinite(ynorm):
+            raise RuntimeError("Numerical issue: invalid CG solution vector.")
+        x = y / ynorm
+
+        # Rayleigh quotient and residual (for you to inspect later)
+        Ax = A @ x
+        lam = float(x @ Ax)
+        r = Ax - lam * x
+        lambdas.append(lam)
+        residual_norms.append(float(np.linalg.norm(r)))
+
+    info = {
+        "sigma": float(sigma),
+        "lambda_history": lambdas,
+        "residual_norm_history": residual_norms,
+        "cg_info_history": cg_infos,
+        "note": (
+            "cg_info=0 means CG converged; cg_info>0 means CG hit maxiter; "
+            "cg_info<0 indicates an error. Residual history is for diagnostics."
+        ),
+    }
+    return lambdas[-1], x, info
+
+
+def smallest_eigenpair_via_shifted_power(A: sp.spmatrix, max_iter: int = 100, seed: int = 0):
+    """
+    Find smallest algebraic eigenpair of symmetric A without inverses/solves,
+    using power iteration on B = U I - A where U >= lambda_max(A).
+    """
+    A = A.tocsr()
+    n = A.shape[0]
+
+    # U = ||A||_infty = max row sum of abs entries (safe upper bound on lambda_max)
+    absA = abs(A)
+    U = float(np.max(np.array(absA.sum(axis=1)).ravel()))
+
+    rng = np.random.default_rng(seed)
+    x = rng.standard_normal(n)
+    x /= np.linalg.norm(x)
+
+    lam_hist = []
+    for _ in range(max_iter):
+        # y = (U I - A) x = U*x - A@x
+        y = U * x - (A @ x)
+        x = y / np.linalg.norm(y)
+
+        # Rayleigh quotient for smallest eigenvalue of A
+        Ax = A @ x
+        lam = float(x @ Ax)
+        lam_hist.append(lam)
+
+    info = {"U": U, "lambda_history": lam_hist}
+    return lam_hist[-1], x, info
+
+    
 class CropClassifierTree:
     """
     A tree-based classifier that uses binary classifiers to assign crop labels to image pixels.
