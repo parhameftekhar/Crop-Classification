@@ -20,7 +20,7 @@ torch.cuda.manual_seed_all(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-TARGET_CROP = 23
+TARGET_CROP = 1
 
 def setup_data_loader():
     # Setup validation loader
@@ -83,8 +83,8 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
                     L = D - sparse_adjacency
                     
                     # Compute eigenvector and prediction
-                    # _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
-                    _, eigen_vector, _ = smallest_eigenpair_via_shifted_power(L, max_iter=100)
+                    _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
+                    # _, eigen_vector, _ = smallest_eigenpair_via_shifted_power(L, max_iter=100)
                     pred = np.sign(eigen_vector).flatten()
                     sign_correct = correct_pred_sign(pred, quadrant_features, positive_center, negative_center)
                     pred = sign_correct * pred
