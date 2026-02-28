@@ -54,6 +54,7 @@ ensemble/
 visualizations/
 unnecessary_scripts/
 tensorboard/
+unet_binary_outputs/
 
 # Large files
 memory
