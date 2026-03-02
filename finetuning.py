@@ -2,6 +2,7 @@ from model.graph_learning import FeatureExtractor, MLP
 import numpy as np
 from data_manager import setup_training_loader, create_sparse_structure_from_images
 from model.graph_learning import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
+from model.eigen_solver import build_eigen_solver
 from losses.signed_laplacian_loss import SignedLaplacianLoss
 import torch.optim as optim
 import torch
@@ -101,41 +102,10 @@ def load_feature_extractor(logger, config):
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
 
-def pytorch_shifted_power_iteration(L, max_iter=100, device='cuda'):
-    """
-    Find the smallest eigenpair of symmetric matrix L using shifted power iteration.
-    This implementation is fully differentiable.
-    """
-    n = L.shape[0]
-    
-    # Estimate U (upper bound on lambda_max)
-    # Since L is a Laplacian, we can use the max row sum of abs values
-    # For a sparse COO tensor L
-    abs_L_values = torch.abs(L.values())
-    row_indices = L.indices()[0]
-    row_sums = torch.zeros(n, device=device)
-    row_sums.index_add_(0, row_indices, abs_L_values)
-    U = torch.max(row_sums)
-    
-    # Initialize random vector
-    x = torch.randn(n, 1, device=device)
-    x = x / torch.norm(x)
-    
-    for _ in range(max_iter):
-        # y = (U*I - L)x = U*x - L@x
-        # Sparse matrix multiplication in PyTorch
-        Lx = torch.sparse.mm(L, x)
-        y = U * x - Lx
-        x = y / torch.norm(y)
-    
-    # Rayleigh quotient for the smallest eigenvalue of L
-    Lx = torch.sparse.mm(L, x)
-    lam = torch.mm(x.t(), Lx)
-    
-    return lam, x
+# Solver implementation is now in model/eigen_solver.py
 
 
-def validate_model(features_extractor, val_loader, positive_center, negative_center, config, order, edges, edge_i, edge_j, logger=None):
+def validate_model(features_extractor, val_loader, positive_center, negative_center, config, order, edges, edge_i, edge_j, val_solver, logger=None):
     features_extractor.eval()
     valid_accuracy_list = []
     valid_f1_score_list = []
@@ -176,7 +146,10 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
                     L = D - sparse_adjacency
                     
                     # Compute eigenvector and prediction
-                    _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
+                    _, eigen_vector = val_solver.solve(L, device=device)
+                    # Convert to numpy for further processing
+                    if torch.is_tensor(eigen_vector):
+                        eigen_vector = eigen_vector.cpu().numpy()
                     pred = np.sign(eigen_vector).flatten()
                     sign_correct = correct_pred_sign(pred, quadrant_features, positive_center, negative_center)
                     pred = sign_correct * pred
@@ -215,7 +188,7 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
     return accuracy, f1
 
 
-def train_model(features_extractor, train_loader, val_loader, config, train_order, train_edge_i, train_edge_j, val_order, val_edges, val_edge_i, val_edge_j, device, criterion, optimizer, logger=None):
+def train_model(features_extractor, train_loader, val_loader, config, train_order, train_edge_i, train_edge_j, val_order, val_edges, val_edge_i, val_edge_j, device, criterion, optimizer, train_solver, val_solver, logger=None):
     best_val_f1 = 0.0
     num_epochs = config['training']['num_epochs']
     patch_size = config['training']['img_height']
@@ -223,6 +196,11 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
     d_star = config['training']['d_star']
     target_crop = config['general']['target_crop']
     save_dir = config['paths']['save_dir']
+    
+    if train_solver is None:
+        raise ValueError("train_solver must be specified for training")
+    if val_solver is None:
+        raise ValueError("val_solver must be specified for training (validation phase)")
     
     for epoch in range(num_epochs):
         features_extractor.train()
@@ -267,7 +245,8 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
             
             L = torch.sparse_coo_tensor(L_indices, L_values, (num_nodes, num_nodes)).coalesce()
             
-            _, eigen_vector = pytorch_shifted_power_iteration(L, max_iter=100, device=device)
+            _, eigen_vector = train_solver.solve(L, device=device)
+            
             preds = eigen_vector.t() 
             
             gtbound = quadrant_labels_orig.unsqueeze(0) 
@@ -308,7 +287,7 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
         positive_center, negative_center = features_extractor.calculate_feature_centers(val_loader)
         val_accuracy, val_f1 = validate_model(
             features_extractor, val_loader, positive_center, negative_center,
-            config, val_order, val_edges, val_edge_i, val_edge_j, logger=logger
+            config, val_order, val_edges, val_edge_i, val_edge_j, val_solver, logger=logger
         )
         
         # Save best model
@@ -386,11 +365,16 @@ def main():
     
     optimizer = optim.Adam(features_extractor.parameters(), lr=config['training']['learning_rate'])
     
+    # Setup solvers
+    train_solver = build_eigen_solver(config['training']['solver'])
+    val_solver = build_eigen_solver(config['validation']['solver'])
+    
     # Start training
     train_model(features_extractor, train_loader, val_loader, config,
                 train_order, train_edge_i, train_edge_j, 
                 val_order, val_edges, val_edge_i, val_edge_j, 
-                device, criterion, optimizer, logger=logger)
+                device, criterion, optimizer, 
+                train_solver=train_solver, val_solver=val_solver, logger=logger)
 
 if __name__ == "__main__":
     main()

@@ -24,7 +24,13 @@ training:
   learning_rate: 0.0001
   num_epochs: 50
   accumulation_steps: 16
+  solver:
+    type: 'power'
+    max_iter: 100
 
 validation:
   img_height: 112
   img_width: 112
+  solver:
+    type: 'lanczos'
+    tol: 1e-7
