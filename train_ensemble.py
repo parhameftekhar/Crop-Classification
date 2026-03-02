@@ -6,7 +6,7 @@ from torchvision import transforms
 import os
 import argparse
 import logging
-from model import EnsembleCNN
+from model.graph_learning import EnsembleCNN
 import numpy as np
 
 # Set up logging - will be configured in main() after args are parsed

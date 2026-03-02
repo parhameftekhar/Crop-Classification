@@ -1,7 +1,7 @@
-from model import FeatureExtractor, MLP
+from model.graph_learning import FeatureExtractor, MLP
 import numpy as np
 from data_manager import setup_training_loader, create_sparse_structure_from_images
-from model import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
+from model.graph_learning import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
 from losses.signed_laplacian_loss import SignedLaplacianLoss
 import torch.optim as optim
 import torch
@@ -15,20 +15,20 @@ import logging
 import os
 from datetime import datetime
 import random
+import yaml
 
-# Set random seeds for reproducibility
-SEED = 42
-random.seed(SEED)
-np.random.seed(SEED)
-torch.manual_seed(SEED)
-torch.cuda.manual_seed(SEED)
-torch.cuda.manual_seed_all(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+# Configuration will be loaded in main()
+config = None
 
-# Global configuration
-TARGET_CROP = 1  # The crop ID we're training to detect
-UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
+# Helper to load config
+def load_config(config_path='config_finetune.yaml'):
+    with open(config_path, 'r') as f:
+        return yaml.safe_load(f)
+
+# Global configuration (will be initialized in main)
+SEED = None
+TARGET_CROP = None
+UNCHANGED_CROPS = None
 
 # Setup logging
 def setup_logging():
@@ -38,7 +38,7 @@ def setup_logging():
     
     # Create a unique log file name with timestamp and target crop
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = f'logs/fine_tuning/fine_tuning_crop{TARGET_CROP}_{timestamp}.log'
+    log_file = f"logs/fine_tuning/fine_tuning_crop{config['general']['target_crop']}_{timestamp}.log"
     
     # Configure logging
     logging.basicConfig(
@@ -53,49 +53,51 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 
-def setup_data_loaders():
+def setup_data_loaders(config):
     # Setup training loader
     train_loader = setup_training_loader(
-        path_to_train_data='./training_data/train_patches.npy',
-        unchanged_crops=UNCHANGED_CROPS,
-        target_crops=[TARGET_CROP],
-        train_batch_size=1,
-        crop_band_index=18,
-        device='cuda',
+        path_to_train_data=config['data_loader']['train_path'],
+        unchanged_crops=config['general']['unchanged_crops'],
+        target_crops=[config['general']['target_crop']],
+        train_batch_size=config['data_loader']['batch_size'],
+        crop_band_index=config['data_loader']['crop_band_index'],
+        device=config['data_loader']['device'],
         ignore_crops=None,
-        min_ratio=0.1,
-        max_ratio=0.9
+        min_ratio=config['data_loader']['min_ratio'],
+        max_ratio=config['data_loader']['max_ratio']
     )
 
     # Setup validation loader
     val_loader = setup_training_loader(
-        path_to_train_data='./training_data/val_patches.npy',
-        unchanged_crops=UNCHANGED_CROPS,
-        target_crops=[TARGET_CROP],
-        train_batch_size=1,
-        crop_band_index=18,
-        device='cuda',
+        path_to_train_data=config['data_loader']['val_path'],
+        unchanged_crops=config['general']['unchanged_crops'],
+        target_crops=[config['general']['target_crop']],
+        train_batch_size=config['data_loader']['batch_size'],
+        crop_band_index=config['data_loader']['crop_band_index'],
+        device=config['data_loader']['device'],
         ignore_crops=None,
-        min_ratio=0.1,
-        max_ratio=0.9
+        min_ratio=config['data_loader']['min_ratio'],
+        max_ratio=config['data_loader']['max_ratio']
     )
 
     return train_loader, val_loader
 
 
 
-def load_feature_extractor(logger, checkpoint_dir='./checkpoints/v2'):
-    checkpoint_path = os.path.join(checkpoint_dir, f'crop{TARGET_CROP}_vs_all.pth')
+def load_feature_extractor(logger, config):
+    checkpoint_dir = config['paths']['checkpoint_dir']
+    target_crop = config['general']['target_crop']
+    checkpoint_path = os.path.join(checkpoint_dir, f'crop{target_crop}_vs_all.pth')
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     if os.path.exists(checkpoint_path):
         features_extractor = torch.load(checkpoint_path, weights_only=False)
         features_extractor.to(device)
-        logger.info(f"Loaded checkpoint for crop {TARGET_CROP} from {checkpoint_path}")
+        logger.info(f"Loaded checkpoint for crop {target_crop} from {checkpoint_path}")
         
         return features_extractor
     else:
-        logger.error(f"Checkpoint not found for crop {TARGET_CROP} at {checkpoint_path}")
+        logger.error(f"Checkpoint not found for crop {target_crop} at {checkpoint_path}")
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
 
 
@@ -133,7 +135,7 @@ def pytorch_shifted_power_iteration(L, max_iter=100, device='cuda'):
     return lam, x
 
 
-def validate_model(features_extractor, val_loader, positive_center, negative_center, d_star, order, edges, edge_i, edge_j, logger=None):
+def validate_model(features_extractor, val_loader, positive_center, negative_center, config, order, edges, edge_i, edge_j, logger=None):
     features_extractor.eval()
     valid_accuracy_list = []
     valid_f1_score_list = []
@@ -151,10 +153,10 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
             for i in range(2):
                 for j in range(2):
                     # Extract the 112x112 quadrant
-                    start_h = i * 112
-                    start_w = j * 112
-                    quadrant_features = features[start_h:start_h+112, start_w:start_w+112, :]
-                    quadrant_label = label.squeeze(0)[start_h:start_h+112, start_w:start_w+112]
+                    start_h = i * config['validation']['img_height']
+                    start_w = j * config['validation']['img_width']
+                    quadrant_features = features[start_h:start_h+config['validation']['img_height'], start_w:start_w+config['validation']['img_width'], :]
+                    quadrant_label = label.squeeze(0)[start_h:start_h+config['validation']['img_height'], start_w:start_w+config['validation']['img_width']]
                     
                     # Reshape and reorder
                     quadrant_features = quadrant_features.reshape(-1, quadrant_features.shape[-1])[order, :]
@@ -163,7 +165,7 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
                     # Calculate distances and weights
                     features_i, features_j = quadrant_features[edge_i], quadrant_features[edge_j]
                     distances = ((features_i - features_j) ** 2).sum(dim=1)
-                    weights = modified_sigmoid(distances, d_star, scale=1)
+                    weights = modified_sigmoid(distances, config['training']['d_star'], scale=1)
                     
                     # Create sparse matrix and compute Laplacian
                     coo_mat = create_coo_sparse_matrix(edges, weights.cpu().numpy())
@@ -213,8 +215,15 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
     return accuracy, f1
 
 
-def train_model(features_extractor, train_loader, val_loader, d_star, train_order, train_edge_i, train_edge_j, val_order, val_edges, val_edge_i, val_edge_j, device, criterion, optimizer, patch_size, num_epochs=10, logger=None, accumulation_steps=16):
+def train_model(features_extractor, train_loader, val_loader, config, train_order, train_edge_i, train_edge_j, val_order, val_edges, val_edge_i, val_edge_j, device, criterion, optimizer, logger=None):
     best_val_f1 = 0.0
+    num_epochs = config['training']['num_epochs']
+    patch_size = config['training']['img_height']
+    accumulation_steps = config['training']['accumulation_steps']
+    d_star = config['training']['d_star']
+    target_crop = config['general']['target_crop']
+    save_dir = config['paths']['save_dir']
+    
     for epoch in range(num_epochs):
         features_extractor.train()
         running_loss = 0.0
@@ -299,27 +308,25 @@ def train_model(features_extractor, train_loader, val_loader, d_star, train_orde
         positive_center, negative_center = features_extractor.calculate_feature_centers(val_loader)
         val_accuracy, val_f1 = validate_model(
             features_extractor, val_loader, positive_center, negative_center,
-            d_star, val_order, val_edges, val_edge_i, val_edge_j, logger=logger
+            config, val_order, val_edges, val_edge_i, val_edge_j, logger=logger
         )
         
         # Save best model
         if val_f1 > best_val_f1:
             best_val_f1 = val_f1
-            save_dir = 'checkpoints/finetune'
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
-            save_path = os.path.join(save_dir, f'crop{TARGET_CROP}_finetuned_best.pth')
+            save_path = os.path.join(save_dir, f'crop{target_crop}_finetuned_best.pth')
             torch.save(features_extractor, save_path)
             if logger:
                 logger.info(f"New best model saved with F1: {best_val_f1:.4f} at {save_path}")
             else:
                 print(f"New best model saved with F1: {best_val_f1:.4f} at {save_path}")
 
-    # Save the model
-    save_dir = 'checkpoints/finetune'
+    # Save the final model
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    save_path = os.path.join(save_dir, f'crop{TARGET_CROP}_finetuned.pth')
+    save_path = os.path.join(save_dir, f'crop{target_crop}_finetuned.pth')
     torch.save(features_extractor, save_path)
     if logger:
         logger.info(f"Model saved to {save_path}")
@@ -327,45 +334,63 @@ def train_model(features_extractor, train_loader, val_loader, d_star, train_orde
         print(f"Model saved to {save_path}")
 
 def main():
+    global config, SEED, TARGET_CROP, UNCHANGED_CROPS
+    config = load_config()
+    
+    # Set random seeds for reproducibility from config
+    SEED = config['general']['seed']
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    TARGET_CROP = config['general']['target_crop']
+    UNCHANGED_CROPS = config['general']['unchanged_crops']
+
     logger = setup_logging()
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = config['data_loader']['device']
     
-    # Parameters
-    d_star = 1.0
-    img_height = img_width = 80 # Reduced to 80x80 to save memory
-    window_size = 30
+    # Parameters from config
+    d_star = config['training']['d_star']
+    img_height = config['training']['img_height']
+    img_width = config['training']['img_width']
+    window_size = config['training']['window_size']
     
-    # Setup sparse structure for training (80x80)
+    # Setup sparse structure for training
     sparse_image_obj_train = create_sparse_structure_from_images(img_height, img_width, window_size, device)
     train_order = sparse_image_obj_train['order']
     train_edges = sparse_image_obj_train['edges']
     train_edge_i, train_edge_j = train_edges[:, 0], train_edges[:, 1]
     
-    # Setup sparse structure for validation (112x112)
-    sparse_image_obj_val = create_sparse_structure_from_images(112, 112, window_size, device)
+    # Setup sparse structure for validation (using validation specific dims)
+    val_height = config['validation']['img_height']
+    val_width = config['validation']['img_width']
+    sparse_image_obj_val = create_sparse_structure_from_images(val_height, val_width, window_size, device)
     val_order = sparse_image_obj_val['order']
     val_edges = sparse_image_obj_val['edges'].cpu().numpy() # eigsh needs numpy
     val_edge_i = val_edges[:, 0]
     val_edge_j = val_edges[:, 1]
     
     # Setup data and model
-    train_loader, val_loader = setup_data_loaders()
-    features_extractor = load_feature_extractor(logger)
+    train_loader, val_loader = setup_data_loaders(config)
+    features_extractor = load_feature_extractor(logger, config)
     
     logger.info(f"Starting fine-tuning for crop {TARGET_CROP} using SignedLaplacianLoss and differentiable shifted power iteration for eigenvector extraction.")
     
     # Initialize loss and optimizer
     criterion = SignedLaplacianLoss(img_height=img_height, img_width=img_width, window_size=window_size)
-    # Important: ensure SignedLaplacianLoss uses the same internal structure
     criterion.to(device)
     
-    optimizer = optim.Adam(features_extractor.parameters(), lr=1e-4) # Reduced LR for fine-tuning
+    optimizer = optim.Adam(features_extractor.parameters(), lr=config['training']['learning_rate'])
     
     # Start training
-    train_model(features_extractor, train_loader, val_loader, d_star, 
+    train_model(features_extractor, train_loader, val_loader, config,
                 train_order, train_edge_i, train_edge_j, 
                 val_order, val_edges, val_edge_i, val_edge_j, 
-                device, criterion, optimizer, img_height, num_epochs=50, logger=logger, accumulation_steps=16)
+                device, criterion, optimizer, logger=logger)
 
 if __name__ == "__main__":
     main()

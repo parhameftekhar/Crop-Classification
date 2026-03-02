@@ -2,7 +2,7 @@ import torch
 import os
 import numpy as np
 from tqdm import tqdm
-from model import CropClassifierTree
+from model.graph_learning import CropClassifierTree
 from data_manager import setup_training_loader
 
 def evaluate_binary_predictions(tree, input_dir='binary_classifier_outputs'):

@@ -1,7 +1,7 @@
-from model import FeatureExtractor
+from model.graph_learning import FeatureExtractor
 import numpy as np
 from data_manager import setup_training_loader, create_sparse_structure_from_images
-from model import modified_sigmoid, create_coo_sparse_matrix
+from model.graph_learning import modified_sigmoid, create_coo_sparse_matrix
 import torch
 from tqdm import tqdm
 from scipy.sparse import diags

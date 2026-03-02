@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 from data_manager import setup_multiclass_loader
-from model import ShallowCNN
+from model.graph_learning import ShallowCNN
 from tqdm import tqdm
 import logging
 from torch.utils.tensorboard import SummaryWriter

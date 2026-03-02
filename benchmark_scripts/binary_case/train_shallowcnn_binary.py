@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import os
 from data_manager import create_modified_crop_labels, filter_balanced_patches, setup_training_loader
-from model import ShallowCNN
+from model.graph_learning import ShallowCNN
 from tqdm import tqdm
 import logging
 import sys

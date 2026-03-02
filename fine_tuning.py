@@ -1,7 +1,7 @@
-from model import FeatureExtractor, MLP
+from model.graph_learning import FeatureExtractor, MLP
 import numpy as np
 from data_manager import setup_training_loader, create_sparse_structure_from_images
-from model import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
+from model.graph_learning import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
 import torch.optim as optim
 import torch
 from tqdm import tqdm

@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm  # Import tqdm for progress tracking
 # Assuming CropClassifierTree and your dataset class are imported or defined here
-from model import CropClassifierTree
+from model.graph_learning import CropClassifierTree
 from torch.utils.data import Dataset
 from data_manager import create_modified_crop_labels
 from data_manager import setup_training_loader

@@ -1,7 +1,7 @@
 import numpy as np
-from model import FeatureExtractor
+from model.graph_learning import FeatureExtractor
 from data_manager import setup_training_loader
-from model import modified_sigmoid, create_coo_sparse_matrix, smallest_eigenpair_via_shifted_power
+from model.graph_learning import modified_sigmoid, create_coo_sparse_matrix, smallest_eigenpair_via_shifted_power
 from tqdm import tqdm
 from scipy.sparse import diags, eye
 from scipy.sparse.linalg import eigsh
