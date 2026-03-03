@@ -1,9 +1,11 @@
 import torch
+import torch.nn as nn
 from scipy.sparse.linalg import eigsh
 import numpy as np
 
-class EigenSolver:
+class EigenSolver(nn.Module):
     def __init__(self, cfg):
+        super().__init__()
         self.cfg = cfg
 
     def solve(self, L, device='cuda'):
@@ -47,6 +49,44 @@ class PowerMethodEigen(EigenSolver):
         
         return lam, x
 
+class RayleighMinimizerEigen(EigenSolver):
+    def __init__(self, cfg):
+        super().__init__(cfg)
+        self.K = cfg.get('iterations', 10)
+        # Learnable step sizes for each iteration.
+        # Initialized such that softplus(param) is approximately 0.1
+        # log(exp(0.1) - 1) approx -2.25
+        self.raw_step_sizes = nn.Parameter(torch.ones(self.K) * -2.25)
+
+    def solve(self, L, device='cuda'):
+        """
+        Find the smallest eigenpair by minimizing the Rayleigh quotient 
+        using gradient descent with learnable step sizes.
+        This implementation is fully differentiable.
+        """
+        n = L.shape[0]
+        
+        # Ensure step sizes are positive using softplus
+        step_sizes = torch.nn.functional.softplus(self.raw_step_sizes)
+        
+        # Initialize random vector
+        v = torch.randn(n, 1, device=device)
+        v = v / torch.norm(v)
+
+        for k in range(self.K):
+            # Gradient of v^T L v is 2Lv
+            # We absorb the factor of 2 into the learnable step_size
+            Lv = torch.sparse.mm(L, v)
+            v = v - step_sizes[k] * Lv
+            # Projection back to the unit sphere
+            v = v / torch.norm(v)
+        
+        # Rayleigh quotient for the smallest eigenvalue of L
+        Lv = torch.sparse.mm(L, v)
+        lam = torch.mm(v.t(), Lv)
+        
+        return lam, v
+
 class LanczosEigen(EigenSolver):
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -76,5 +116,7 @@ def build_eigen_solver(cfg):
         return LanczosEigen(cfg)
     elif solver_type == "power":
         return PowerMethodEigen(cfg)
+    elif solver_type == "rayleigh":
+        return RayleighMinimizerEigen(cfg)
     else:
         raise ValueError(f"Unknown eigen solver type: {solver_type}")

@@ -25,8 +25,8 @@ training:
   num_epochs: 50
   accumulation_steps: 16
   solver:
-    type: 'power'
-    max_iter: 100
+    type: 'rayleigh'
+    iterations: 100
 
 validation:
   img_height: 112

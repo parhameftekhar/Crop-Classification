@@ -359,15 +359,19 @@ def main():
     
     logger.info(f"Starting fine-tuning for crop {TARGET_CROP} using SignedLaplacianLoss and differentiable shifted power iteration for eigenvector extraction.")
     
+    # Setup solvers
+    train_solver = build_eigen_solver(config['training']['solver'])
+    val_solver = build_eigen_solver(config['validation']['solver'])
+    train_solver.to(device)
+    val_solver.to(device)
+    
     # Initialize loss and optimizer
     criterion = SignedLaplacianLoss(img_height=img_height, img_width=img_width, window_size=window_size)
     criterion.to(device)
     
-    optimizer = optim.Adam(features_extractor.parameters(), lr=config['training']['learning_rate'])
-    
-    # Setup solvers
-    train_solver = build_eigen_solver(config['training']['solver'])
-    val_solver = build_eigen_solver(config['validation']['solver'])
+    # Collect all trainable parameters (feature extractor + solvers)
+    trainable_params = list(features_extractor.parameters()) + list(train_solver.parameters())
+    optimizer = optim.Adam(trainable_params, lr=config['training']['learning_rate'])
     
     # Start training
     train_model(features_extractor, train_loader, val_loader, config,
