@@ -1,6 +1,6 @@
 general:
   seed: 42
-  target_crop: 1
+  target_crop: 176
   unchanged_crops: [1, 5, 23, 176]
 
 data_loader:
@@ -22,6 +22,7 @@ training:
   img_height: 80
   img_width: 80
   learning_rate: 0.0001
+  loss_type: 'normalized_correlation' # options: 'signed_laplacian', 'normalized_correlation'
   num_epochs: 50
   accumulation_steps: 16
   solver:

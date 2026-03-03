@@ -4,6 +4,7 @@ from data_manager import setup_training_loader, create_sparse_structure_from_ima
 from model.graph_learning import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
 from model.eigen_solver import build_eigen_solver
 from losses.signed_laplacian_loss import SignedLaplacianLoss
+from losses.normalized_correlation_loss import NormalizedCorrelationLoss
 import torch.optim as optim
 import torch
 from tqdm import tqdm
@@ -357,7 +358,9 @@ def main():
     train_loader, val_loader = setup_data_loaders(config)
     features_extractor = load_feature_extractor(logger, config)
     
-    logger.info(f"Starting fine-tuning for crop {TARGET_CROP} using SignedLaplacianLoss and differentiable shifted power iteration for eigenvector extraction.")
+    loss_type = config['training'].get('loss_type', 'signed_laplacian')
+    solver_type = config['training']['solver']['type']
+    logger.info(f"Starting fine-tuning for crop {TARGET_CROP} using {loss_type} and {solver_type} solver for eigenvector extraction.")
     
     # Setup solvers
     train_solver = build_eigen_solver(config['training']['solver'])
@@ -366,7 +369,13 @@ def main():
     val_solver.to(device)
     
     # Initialize loss and optimizer
-    criterion = SignedLaplacianLoss(img_height=img_height, img_width=img_width, window_size=window_size)
+    if loss_type == 'signed_laplacian':
+        criterion = SignedLaplacianLoss(img_height=img_height, img_width=img_width, window_size=window_size)
+    elif loss_type == 'normalized_correlation':
+        criterion = NormalizedCorrelationLoss(img_height=img_height, img_width=img_width, window_size=window_size)
+    else:
+        raise ValueError(f"Unknown loss_type: {loss_type}")
+        
     criterion.to(device)
     
     # Collect all trainable parameters (feature extractor + solvers)
