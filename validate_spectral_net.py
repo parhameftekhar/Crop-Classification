@@ -93,8 +93,8 @@ def validate_spectral_net():
             # labels shape: (B, H, W)
             labels = labels.to(device)
             
-            # Forward pass through the end-to-end model
-            eigen_val, eigen_vector, L, features_flat = model(bands)
+            # Forward pass through the end-to-end model (ignoring 5th return: init_guess)
+            eigen_val, eigen_vector, L, features_flat, _ = model(bands)
             
             # eigen_vector shape: (B, N)
             B_curr = eigen_vector.shape[0]

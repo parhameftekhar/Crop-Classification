@@ -8,6 +8,7 @@ from losses.signed_laplacian_loss import SignedLaplacianLoss
 from losses.normalized_correlation_loss import NormalizedCorrelationLoss
 import torch.optim as optim
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 from scipy.sparse import diags
 from scipy.sparse.linalg import eigsh
@@ -127,7 +128,7 @@ def validate_model(model, val_loader, criterion, positive_center, negative_cente
             # labels shape: (B, H, W)
             
             # Forward pass through the end-to-end model
-            eigen_val, eigen_vector, L, features_flat = model(bands)
+            eigen_val, eigen_vector, L, features_flat, init_guess = model(bands)
             
             # eigen_vector shape: (B, N)
             # features_flat shape: (B, N, C)
@@ -136,7 +137,10 @@ def validate_model(model, val_loader, criterion, positive_center, negative_cente
             # Calculate Loss for the batch
             # criterion expects preds (B, N) and ground_truth (B, H, W)
             loss = criterion(eigen_vector, labels)
-            running_loss += loss.item()
+            
+            # Optional: monitor auxiliary loss in validation
+            aux_loss = F.mse_loss(init_guess.squeeze(-1), labels)
+            running_loss += (loss + aux_loss).item() # Just for monitoring
             total_subpatches += B_curr
             
             for b in range(B_curr):
@@ -187,11 +191,14 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
     patch_size = config['training']['img_height']
     accumulation_steps = config['training'].get('accumulation_steps', 1)
     target_crop = config['general']['target_crop']
+    aux_weight = config['training'].get('aux_loss_weight', 0.1)
     save_dir = config['paths']['save_dir']
     
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        running_spectral_loss = 0.0
+        running_aux_loss = 0.0
         latest_grad_norm = 0.0
         optimizer.zero_grad()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
@@ -200,14 +207,22 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             # labels shape: (B, H, W)
             
             # Forward pass through the end-to-end model
-            eigen_val, eigen_vector, L, features_flat = model(bands)
+            # eigen_vector: (B, N), init_guess: (B, H, W, 1)
+            eigen_val, eigen_vector, L, features_flat, init_guess = model(bands)
             
-            # eigen_vector shape: (B, N), labels shape: (B, H, W)
-            loss = criterion(eigen_vector, labels)
+            # Main spectral loss
+            spectral_loss = criterion(eigen_vector, labels)
+            
+            # Auxiliary loss on the init_head (encourages rough classification)
+            # labels are (+1, -1) so MSE is appropriate
+            aux_loss = F.mse_loss(init_guess.squeeze(-1), labels)
+            
+            # Combined Loss
+            loss = spectral_loss + aux_weight * aux_loss
             
             # Scale loss for gradient accumulation
-            loss = loss / accumulation_steps
-            loss.backward()
+            loss_scaled = loss / accumulation_steps
+            loss_scaled.backward()
             
             # Step optimizer only after accumulating enough gradients
             if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
@@ -223,9 +238,14 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 optimizer.zero_grad()
             
             running_loss += (loss.item() * accumulation_steps)
+            running_spectral_loss += (spectral_loss.item() * accumulation_steps)
+            running_aux_loss += (aux_loss.item() * accumulation_steps)
+
             pbar.set_postfix({
                 'loss': loss.item() * accumulation_steps, 
-                'avg_loss': running_loss / (pbar.n + 1),
+                'spec': spectral_loss.item() * accumulation_steps,
+                'aux': aux_loss.item() * accumulation_steps,
+                'avg': running_loss / (pbar.n + 1),
                 'grad': f"{latest_grad_norm:.2e}"
             })
 

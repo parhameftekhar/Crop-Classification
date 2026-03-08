@@ -101,6 +101,10 @@ class FeatureExtractor(nn.Module):
         # Create a learnable square matrix initialized as an identity matrix
         self.M = nn.Parameter(torch.eye(matrix_size, device=device))
         
+        # New: Initialization head to provide a warm start for eigen solvers
+        # This head predicts a single value per pixel representing the rough cluster assignment
+        self.init_head = nn.Conv2d(num_channel_out, 1, kernel_size=1, device=device)
+        
         # Store the device
         self.device = device
         
@@ -116,23 +120,26 @@ class FeatureExtractor(nn.Module):
             inputBands (torch.Tensor): Input tensor of shape (B, H, W, C)
             
         Returns:
-            torch.Tensor: Output tensor of shape (B, H, W, C)
+            tuple: (features, init_guess)
+                - features: Transformed feature tensor of shape (B, H, W, C)
+                - init_guess: Scalar initial guess per pixel of shape (B, H, W, 1)
         """
         # Get output from the CNN
         features = self.cnn(inputBands)  # shape: (B, H, W, C)
         
         # Apply matrix multiplication along the channel dimension
-        # Reshape features to (B*H*W, C) for matrix multiplication
         B, H, W, C = features.shape
-        features_reshaped = features.reshape(-1, C)  # shape: (B*H*W, C)
-        
-        # Apply matrix multiplication
-        transformed_features = torch.matmul(features_reshaped, self.M)  # shape: (B*H*W, C)
-        
-        # Reshape back to original shape
+        features_reshaped = features.reshape(-1, C)
+        transformed_features = torch.matmul(features_reshaped, self.M)
         features = transformed_features.reshape(B, H, W, C)
         
-        return features
+        # Generate the initial guess for the eigen solver
+        # features for init_head should be (B, C, H, W)
+        features_permuted = features.permute(0, 3, 1, 2)
+        init_guess = self.init_head(features_permuted) # (B, 1, H, W)
+        init_guess = init_guess.permute(0, 2, 3, 1) # (B, H, W, 1)
+        
+        return features, init_guess
 
     def calculate_feature_centers(self, train_loader):
         """
@@ -155,8 +162,8 @@ class FeatureExtractor(nn.Module):
         
         with torch.no_grad():
             for bands, labels in train_loader:
-                # Extract features
-                features = self(bands)
+                # Extract features (ignore the init_guess here)
+                features, _ = self(bands)
                 # Reshape features and labels to match
                 features = features.reshape(-1, features.shape[-1])
                 labels = labels.reshape(-1)
@@ -499,8 +506,9 @@ class CropClassifierTree:
                     
                 classifier = self.classifiers[crop_id]
                 
-                # Get features from the classifier
-                features = classifier(image.unsqueeze(0)).squeeze(0)  # Remove batch dimension
+                # Get features from the classifier (unpack the tuple)
+                features, _ = classifier(image.unsqueeze(0))
+                features = features.squeeze(0)  # Remove batch dimension
                 
                 # Get feature centers for this classifier
                 positive_center, negative_center = classifier.get_feature_centers()
@@ -717,7 +725,7 @@ class EnsembleCNN(nn.Module):
         # Get outputs from all pre-trained models
         outputs = []
         for model in self.models:
-            output = model(x)
+            output, _ = model(x)
             outputs.append(output)
         
         # Concatenate outputs along channel dimension

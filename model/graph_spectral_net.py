@@ -47,6 +47,14 @@ class GraphSpectralNet(nn.Module):
             # Load the full model object
             model = torch.load(checkpoint_path, weights_only=False)
             model.to(self.device)
+            
+            # Ensure compatibility with older checkpoints that don't have init_head
+            if not hasattr(model, 'init_head'):
+                # num_channel_out is the last channel dimension of the CNN output
+                num_channel_out = model.M.shape[0]
+                model.init_head = nn.Conv2d(num_channel_out, 1, kernel_size=1).to(self.device)
+                print(f"GraphSpectralNet: Added missing init_head to feature extractor")
+
             print(f"GraphSpectralNet: Loaded feature extractor from {checkpoint_path}")
             return model
         else:
@@ -61,7 +69,8 @@ class GraphSpectralNet(nn.Module):
         """
         # x shape: (B, H, W, C)
         batch_size = x.shape[0]
-        features = self.feature_extractor(x)
+        # features: (B, H, W, C), init_guess: (B, H, W, 1)
+        features, init_guess = self.feature_extractor(x)
         B, H, W, C = features.shape
         num_nodes_per_patch = H * W
         
@@ -73,8 +82,9 @@ class GraphSpectralNet(nn.Module):
         if curr_order is None or curr_edge_i is None or curr_edge_j is None:
             raise ValueError("Graph structure (order, edge_i, edge_j) must be provided")
         
-        # Flatten and reorder features for the whole batch (B, N, C)
+        # Flatten and reorder features/init_guess for the whole batch
         features_flat = features.reshape(B, num_nodes_per_patch, -1)[:, curr_order, :]
+        init_guess_flat = init_guess.reshape(B, num_nodes_per_patch, 1)[:, curr_order, :]
         
         # Calculate edge weights for the whole batch
         # features_flat_i shape: (B, E, C)
@@ -118,9 +128,10 @@ class GraphSpectralNet(nn.Module):
         
         # 3. Differentiable Eigen-solving
         # solve returns lam (B, 1) and vector (BN, 1)
-        eigen_val, eigen_vector = self.solver.solve(L, device=self.device)
+        # We pass the flattened init_guess as the warm start
+        eigen_val, eigen_vector = self.solver.solve(L, v_init=init_guess_flat, device=self.device)
         
         # Reshape vector back to (B, N)
         eigen_vector = eigen_vector.view(B, num_nodes_per_patch)
         
-        return eigen_val, eigen_vector, L, features_flat
+        return eigen_val, eigen_vector, L, features_flat, init_guess

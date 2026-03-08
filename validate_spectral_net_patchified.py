@@ -95,9 +95,8 @@ def validate_spectral_net_patchified():
                     subpatch_bands = bands[:, i:i+SUBPATCH_SIZE, j:j+SUBPATCH_SIZE, :]
                     subpatch_labels = label.squeeze(0)[i:i+SUBPATCH_SIZE, j:j+SUBPATCH_SIZE].to(device)
                     
-                    # Forward pass through the end-to-end model
-                    # The model expects patch_size for graph construction
-                    eigen_val, eigen_vector, L, features_flat = model(subpatch_bands)
+                    # Forward pass through the end-to-end model (ignoring 5th return: init_guess)
+                    eigen_val, eigen_vector, L, features_flat, _ = model(subpatch_bands)
                     
                     # Compute metrics
                     pred_eigen = eigen_vector.cpu().numpy().flatten()

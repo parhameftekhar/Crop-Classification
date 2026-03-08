@@ -8,7 +8,7 @@ class EigenSolver(nn.Module):
         super().__init__()
         self.cfg = cfg
 
-    def solve(self, L, device='cuda'):
+    def solve(self, L, v_init=None, device='cuda'):
         raise NotImplementedError
 
 class PowerMethodEigen(EigenSolver):
@@ -18,25 +18,21 @@ class PowerMethodEigen(EigenSolver):
         self.n_nodes = cfg['n_nodes']  # Requirement
         self.register_buffer('v0', torch.randn(self.n_nodes, 1))
 
-    def solve(self, L, device='cuda'):
+    def solve(self, L, v_init=None, device='cuda'):
         """
         Find the smallest eigenpair using shifted power iteration.
-        Supports block-diagonal batched matrices.
         """
         n_total = L.shape[0]
         B = n_total // self.n_nodes
         N = self.n_nodes
         
-        # Estimate U (upper bound on lambda_max)
-        abs_L_values = torch.abs(L.values())
-        row_indices = L.indices()[0]
-        row_sums = torch.zeros(n_total, device=device)
-        row_sums.index_add_(0, row_indices, abs_L_values)
-        U = torch.max(row_sums)
-        
-        # Initialize and tile v0 for the batch
-        # x shape: (B*N, 1)
-        x = self.v0.repeat(B, 1)
+        # Initialize starting vector
+        if v_init is not None:
+            # v_init expected shape: (B, N) or (B*N, 1)
+            x = v_init.reshape(n_total, 1)
+        else:
+            # Fallback to random initialization
+            x = self.v0.repeat(B, 1)
         
         # Helper for per-batch normalization
         def normalize_v(v):
@@ -73,9 +69,9 @@ class RayleighMinimizerEigen(EigenSolver):
         self.n_nodes = cfg['n_nodes']  # Requirement
         self.register_buffer('v0', torch.randn(self.n_nodes, 1))
 
-    def solve(self, L, device='cuda'):
+    def solve(self, L, v_init=None, device='cuda'):
         """
-        Minimize Rayleigh quotient for each batch item in a block-diagonal L.
+        Minimize Rayleigh quotient starting from v_init (if provided).
         """
         n_total = L.shape[0]
         B = n_total // self.n_nodes
@@ -84,8 +80,13 @@ class RayleighMinimizerEigen(EigenSolver):
         # Ensure step sizes are positive
         step_sizes = torch.nn.functional.softplus(self.raw_step_sizes)
         
-        # Initialize and tile v
-        v = self.v0.repeat(B, 1)
+        # Initialize starting vector
+        if v_init is not None:
+            # v_init expected shape: (B, N) or (B*N, 1)
+            v = v_init.reshape(n_total, 1)
+        else:
+            # Fallback to random initialization
+            v = self.v0.repeat(B, 1)
         
         def normalize_v(vec):
             vec_reshaped = vec.view(B, N)
@@ -112,7 +113,7 @@ class LanczosEigen(EigenSolver):
         super().__init__(cfg)
         self.tol = cfg.get('tol', 1e-7)
 
-    def solve(self, L, device='cuda'):
+    def solve(self, L, v_init=None, device='cuda'):
         """
         Non-differentiable solver using scipy's eigsh (Lanczos).
         Useful for validation where gradients aren't needed.
