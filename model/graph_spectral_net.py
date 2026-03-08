@@ -55,15 +55,15 @@ class GraphSpectralNet(nn.Module):
     def forward(self, x, order=None, edge_i=None, edge_j=None):
         """
         Forward pass through the pipeline:
-        1. Feature extraction
-        2. Graph construction (Weights -> Laplacian)
-        3. Differentiable Eigen-solving
+        1. Feature extraction for the whole batch
+        2. Batched Graph construction (Block-Diagonal Laplacian)
+        3. Differentiable Eigen-solving across the batch
         """
-        # x is assumed to be a single subpatch (H, W, C) or (1, H, W, C)
-        if x.dim() == 4:
-            features = self.feature_extractor(x).squeeze(0)
-        else:
-            features = self.feature_extractor(x.unsqueeze(0)).squeeze(0)
+        # x shape: (B, H, W, C)
+        batch_size = x.shape[0]
+        features = self.feature_extractor(x)
+        B, H, W, C = features.shape
+        num_nodes_per_patch = H * W
         
         # Use provided graph structure or falls back to buffers
         curr_order = order if order is not None else self.order
@@ -71,41 +71,56 @@ class GraphSpectralNet(nn.Module):
         curr_edge_j = edge_j if edge_j is not None else self.edge_j
         
         if curr_order is None or curr_edge_i is None or curr_edge_j is None:
-            raise ValueError("Graph structure (order, edge_i, edge_j) must be provided either in __init__ or forward")
+            raise ValueError("Graph structure (order, edge_i, edge_j) must be provided")
         
-        # Flatten and reorder features based on the sparse structure
-        num_pixels = features.shape[0] * features.shape[1]
-        features_flat = features.reshape(num_pixels, -1)[curr_order, :]
+        # Flatten and reorder features for the whole batch (B, N, C)
+        features_flat = features.reshape(B, num_nodes_per_patch, -1)[:, curr_order, :]
         
-        # Calculate edge weights
-        features_i = features_flat[curr_edge_i]
-        features_j = features_flat[curr_edge_j]
-        distances = ((features_i - features_j) ** 2).sum(dim=1)
+        # Calculate edge weights for the whole batch
+        # features_flat_i shape: (B, E, C)
+        features_flat_i = features_flat[:, curr_edge_i, :]
+        features_flat_j = features_flat[:, curr_edge_j, :]
+        
+        # distances shape: (B, E)
+        distances = ((features_flat_i - features_flat_j) ** 2).sum(dim=2)
         weights = modified_sigmoid(distances, self.d_star, scale=1.0)
         
-        # Build the degree matrix (diagonal) for Signed Laplacian
-        # D_ii = sum(|W_ij|) ensures the matrix is positive semi-definite and handles repulsion
-        num_nodes = features_flat.shape[0]
-        degree = torch.zeros(num_nodes, device=self.device)
-        abs_weights = torch.abs(weights)
-        degree.index_add_(0, curr_edge_i, abs_weights)
-        degree.index_add_(0, curr_edge_j, abs_weights)
+        # Build batched degree matrix
+        degree = torch.zeros(B, num_nodes_per_patch, device=self.device)
+        degree.scatter_add_(1, curr_edge_i.expand(B, -1), weights)
+        degree.scatter_add_(1, curr_edge_j.expand(B, -1), weights)
         
-        # Build Sparse Laplacian matrix indices
-        diag_indices = torch.stack([torch.arange(num_nodes, device=self.device)] * 2, dim=0)
+        # Construct Giant Block-Diagonal Laplacian
+        # Node offsets for each batch item
+        batch_offsets = torch.arange(B, device=self.device).unsqueeze(1) * num_nodes_per_patch
+        
+        # Shifted indices for the global sparse matrix
+        global_edge_i = (curr_edge_i.unsqueeze(0) + batch_offsets).flatten()
+        global_edge_j = (curr_edge_j.unsqueeze(0) + batch_offsets).flatten()
+        global_diag = (torch.arange(num_nodes_per_patch, device=self.device).unsqueeze(0) + batch_offsets).flatten()
+        
+        # Giant Laplacian Indices
+        diag_indices = torch.stack([global_diag, global_diag], dim=0)
         off_diag_indices = torch.cat([
-            torch.stack([curr_edge_i, curr_edge_j], dim=0),
-            torch.stack([curr_edge_j, curr_edge_i], dim=0)
+            torch.stack([global_edge_i, global_edge_j], dim=0),
+            torch.stack([global_edge_j, global_edge_i], dim=0)
         ], dim=1)
         
         L_indices = torch.cat([diag_indices, off_diag_indices], dim=1)
-        # Build Sparse Laplacian matrix values: L = D - W
-        L_values = torch.cat([degree, -weights, -weights], dim=0)
         
-        L = torch.sparse_coo_tensor(L_indices, L_values, (num_nodes, num_nodes)).coalesce()
+        # Giant Laplacian Values
+        global_weights = weights.flatten()
+        global_degree = degree.flatten()
+        L_values = torch.cat([global_degree, -global_weights, -global_weights], dim=0)
         
-        # Step 3: Differentiable Eigen-solving
-        # Find the smallest eigenpair of Laplacian L
+        giant_n = B * num_nodes_per_patch
+        L = torch.sparse_coo_tensor(L_indices, L_values, (giant_n, giant_n)).coalesce()
+        
+        # 3. Differentiable Eigen-solving
+        # solve returns lam (B, 1) and vector (BN, 1)
         eigen_val, eigen_vector = self.solver.solve(L, device=self.device)
+        
+        # Reshape vector back to (B, N)
+        eigen_vector = eigen_vector.view(B, num_nodes_per_patch)
         
         return eigen_val, eigen_vector, L, features_flat

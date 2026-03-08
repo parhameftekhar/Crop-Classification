@@ -4,8 +4,8 @@ general:
   unchanged_crops: [1, 5, 23, 176]
 
 data_loader:
-  train_path: './training_data/train_patches.npy'
-  val_path: './training_data/val_patches.npy'
+  train_path: './training_data32/train_patches.npy'
+  val_path: './training_data32/val_patches.npy'
   batch_size: 1
   crop_band_index: 18
   device: 'cuda'
@@ -19,15 +19,16 @@ paths:
 training:
   d_star: 1.0
   window_size: 30
-  img_height: 80
-  img_width: 80
+  img_height: 32
+  img_width: 32
   learning_rate: 0.0001
-  loss_type: 'normalized_correlation' # options: 'signed_laplacian', 'normalized_correlation'
+  loss_type: 'signed_laplacian' # options: 'signed_laplacian', 'normalized_correlation'
   num_epochs: 50
-  accumulation_steps: 16
+  accumulation_steps: 64
   solver:
     type: 'rayleigh'
-    iterations: 100
+    iterations: 200
+    # Planned: init_strategy: 'random' | 'fixed' | 'learned'
 
 validation:
   img_height: 112

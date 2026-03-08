@@ -15,37 +15,49 @@ class PowerMethodEigen(EigenSolver):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.max_iter = cfg.get('max_iter', 100)
+        self.n_nodes = cfg['n_nodes']  # Requirement
+        self.register_buffer('v0', torch.randn(self.n_nodes, 1))
 
     def solve(self, L, device='cuda'):
         """
-        Find the smallest eigenpair of symmetric matrix L using shifted power iteration.
-        This implementation is fully differentiable.
+        Find the smallest eigenpair using shifted power iteration.
+        Supports block-diagonal batched matrices.
         """
-        n = L.shape[0]
+        n_total = L.shape[0]
+        B = n_total // self.n_nodes
+        N = self.n_nodes
         
         # Estimate U (upper bound on lambda_max)
-        # Since L is a Laplacian, we can use the max row sum of abs values
-        # For a sparse COO tensor L
         abs_L_values = torch.abs(L.values())
         row_indices = L.indices()[0]
-        row_sums = torch.zeros(n, device=device)
+        row_sums = torch.zeros(n_total, device=device)
         row_sums.index_add_(0, row_indices, abs_L_values)
         U = torch.max(row_sums)
         
-        # Initialize random vector
-        x = torch.randn(n, 1, device=device)
-        x = x / torch.norm(x)
+        # Initialize and tile v0 for the batch
+        # x shape: (B*N, 1)
+        x = self.v0.repeat(B, 1)
+        
+        # Helper for per-batch normalization
+        def normalize_v(v):
+            v_reshaped = v.view(B, N)
+            norms = torch.norm(v_reshaped, dim=1, keepdim=True) + 1e-9
+            return (v_reshaped / norms).view(B * N, 1)
+
+        x = normalize_v(x)
         
         for _ in range(self.max_iter):
-            # y = (U*I - L)x = U*x - L@x
-            # Sparse matrix multiplication in PyTorch
+            # y = U*x - L@x
             Lx = torch.sparse.mm(L, x)
             y = U * x - Lx
-            x = y / torch.norm(y)
+            x = normalize_v(y)
         
-        # Rayleigh quotient for the smallest eigenvalue of L
+        # Rayleigh quotient per batch item
         Lx = torch.sparse.mm(L, x)
-        lam = torch.mm(x.t(), Lx)
+        # lam shape: (B, 1)
+        x_reshaped = x.view(B, N)
+        Lx_reshaped = Lx.view(B, N)
+        lam = torch.sum(x_reshaped * Lx_reshaped, dim=1, keepdim=True)
         
         return lam, x
 
@@ -57,33 +69,41 @@ class RayleighMinimizerEigen(EigenSolver):
         # Initialized such that softplus(param) is approximately 0.1
         # log(exp(0.1) - 1) approx -2.25
         self.raw_step_sizes = nn.Parameter(torch.ones(self.K) * -2.25)
+        
+        self.n_nodes = cfg['n_nodes']  # Requirement
+        self.register_buffer('v0', torch.randn(self.n_nodes, 1))
 
     def solve(self, L, device='cuda'):
         """
-        Find the smallest eigenpair by minimizing the Rayleigh quotient 
-        using gradient descent with learnable step sizes.
-        This implementation is fully differentiable.
+        Minimize Rayleigh quotient for each batch item in a block-diagonal L.
         """
-        n = L.shape[0]
+        n_total = L.shape[0]
+        B = n_total // self.n_nodes
+        N = self.n_nodes
         
-        # Ensure step sizes are positive using softplus
+        # Ensure step sizes are positive
         step_sizes = torch.nn.functional.softplus(self.raw_step_sizes)
         
-        # Initialize random vector
-        v = torch.randn(n, 1, device=device)
-        v = v / torch.norm(v)
+        # Initialize and tile v
+        v = self.v0.repeat(B, 1)
+        
+        def normalize_v(vec):
+            vec_reshaped = vec.view(B, N)
+            norms = torch.norm(vec_reshaped, dim=1, keepdim=True) + 1e-9
+            return (vec_reshaped / norms).view(B * N, 1)
+
+        v = normalize_v(v)
 
         for k in range(self.K):
-            # Gradient of v^T L v is 2Lv
-            # We absorb the factor of 2 into the learnable step_size
             Lv = torch.sparse.mm(L, v)
             v = v - step_sizes[k] * Lv
-            # Projection back to the unit sphere
-            v = v / torch.norm(v)
+            v = normalize_v(v)
         
-        # Rayleigh quotient for the smallest eigenvalue of L
+        # Rayleigh quotient per batch item
         Lv = torch.sparse.mm(L, v)
-        lam = torch.mm(v.t(), Lv)
+        v_reshaped = v.view(B, N)
+        Lv_reshaped = Lv.view(B, N)
+        lam = torch.sum(v_reshaped * Lv_reshaped, dim=1, keepdim=True)
         
         return lam, v
 

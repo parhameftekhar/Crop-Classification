@@ -30,6 +30,19 @@ This document tracks the strategic initiatives and experimental ideas to push th
 - [ ] Explore alternative anchoring methods (e.g., using small, high-confidence labeled subsets).
 - [ ] Test the stability of sign correction across different crop types and geographical variations.
 
+### 5️⃣ Eigen Solver Initiatives: Starting Vector Optimization
+> *Objective: Improve the convergence and efficiency of our differentiable eigen solvers by optimizing the initial vector.*
+- [ ] Implement **Fixed Vector Initialization**: Use a constant vector (e.g., all ones) to ensure deterministic starting points across iterations.
+- [ ] Implement **Learned Starting Vector**: Use a learnable parameter or a small network to predict a "warm-start" vector for the eigen solver.
+- [ ] Evaluate the impact of initialization on convergence speed and gradient stability.
+
+### 6️⃣ End-to-End Pipeline: GraphSpectralNet
+> *Objective: Train the feature extractor and eigen solver as a single unified system.*
+- [x] Create `GraphSpectralNet` to integrate CNN, Sparse Graph Construction, and Differentiable Eigen Solver.
+- [x] Implement **Signed Laplacian Loss** following the standard quadratic form $x^T L_s x$.
+- [x] Pre-process high-resolution patches into **56x56** and **32x32** subpatch datasets for efficient training.
+- [ ] Optimize the trade-off between **Rayleigh** and **Power Method** solvers during backpropagation.
+
 ---
 
 ## 🛠 Status Dashboard
@@ -40,6 +53,8 @@ This document tracks the strategic initiatives and experimental ideas to push th
 | GT Signed Laplacian | 🔴 High | 🟡 Med | ⚠️ N/A |
 | RF Feature Expansion | 🟡 Med | 🟡 Med | 🕒 Pending |
 | Sign Correction | 🔴 High | 🔴 High | 🏁 In Progress |
+| Eigen Solver Init | 🟡 Med | 🟡 Med | 🕒 Pending |
+| End-to-End Tuning | 🔴 High | 🔴 High | 🏁 In Progress |
 
 ---
 

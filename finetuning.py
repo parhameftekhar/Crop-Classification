@@ -3,6 +3,7 @@ import numpy as np
 from data_manager import setup_training_loader, create_sparse_structure_from_images
 from model.graph_learning import create_feature_pairs, modified_sigmoid, create_coo_sparse_matrix
 from model.eigen_solver import build_eigen_solver
+from model.graph_spectral_net import GraphSpectralNet
 from losses.signed_laplacian_loss import SignedLaplacianLoss
 from losses.normalized_correlation_loss import NormalizedCorrelationLoss
 import torch.optim as optim
@@ -106,75 +107,66 @@ def load_feature_extractor(logger, config):
 # Solver implementation is now in model/eigen_solver.py
 
 
-def validate_model(features_extractor, val_loader, positive_center, negative_center, config, order, edges, edge_i, edge_j, val_solver, logger=None):
-    features_extractor.eval()
-    valid_accuracy_list = []
-    valid_f1_score_list = []
-    
-    # Initialize overall confusion matrix
+def validate_model(model, val_loader, criterion, positive_center, negative_center, config, logger=None):
+    model.eval()
+    running_loss = 0.0
     overall_confusion = np.zeros((2, 2))
-    device = next(features_extractor.parameters()).device
+    device = next(model.parameters()).device
+    
+    # Use the training patch size as the atomic unit for splitting the validation image
+    # GraphSpectralNet is already initialized with this structure (buffers)
+    patch_h = config['training']['img_height']
+    patch_w = config['training']['img_width']
+    
+    # Count total subpatches processed for average loss
+    total_subpatches = 0
 
     with torch.no_grad():
-        for bands, label in tqdm(val_loader, desc="Validation"):
-            bands = bands.to(device)
-            features = features_extractor(bands).squeeze(0)
+        for bands, labels in tqdm(val_loader, desc="Validation"):
+            bands, labels = bands.to(device), labels.to(device)
+            # labels shape: (B, H, W)
             
-            # Process each 112x112 quadrant
-            for i in range(2):
-                for j in range(2):
-                    # Extract the 112x112 quadrant
-                    start_h = i * config['validation']['img_height']
-                    start_w = j * config['validation']['img_width']
-                    quadrant_features = features[start_h:start_h+config['validation']['img_height'], start_w:start_w+config['validation']['img_width'], :]
-                    quadrant_label = label.squeeze(0)[start_h:start_h+config['validation']['img_height'], start_w:start_w+config['validation']['img_width']]
-                    
-                    # Reshape and reorder
-                    quadrant_features = quadrant_features.reshape(-1, quadrant_features.shape[-1])[order, :]
-                    quadrant_label = quadrant_label.reshape(-1)[order]
-                    
-                    # Calculate distances and weights
-                    features_i, features_j = quadrant_features[edge_i], quadrant_features[edge_j]
-                    distances = ((features_i - features_j) ** 2).sum(dim=1)
-                    weights = modified_sigmoid(distances, config['training']['d_star'], scale=1)
-                    
-                    # Create sparse matrix and compute Laplacian
-                    coo_mat = create_coo_sparse_matrix(edges, weights.cpu().numpy())
-                    sparse_adjacency = coo_mat + coo_mat.T
-                    
-                    degree = sparse_adjacency.sum(axis=1).A1
-                    D = diags(degree)
-                    L = D - sparse_adjacency
-                    
-                    # Compute eigenvector and prediction
-                    _, eigen_vector = val_solver.solve(L, device=device)
-                    # Convert to numpy for further processing
-                    if torch.is_tensor(eigen_vector):
-                        eigen_vector = eigen_vector.cpu().numpy()
-                    pred = np.sign(eigen_vector).flatten()
-                    sign_correct = correct_pred_sign(pred, quadrant_features, positive_center, negative_center)
-                    pred = sign_correct * pred
-                    y = quadrant_label.cpu().numpy()
+            # Forward pass through the end-to-end model
+            eigen_val, eigen_vector, L, features_flat = model(bands)
+            
+            # eigen_vector shape: (B, N)
+            # features_flat shape: (B, N, C)
+            B_curr = eigen_vector.shape[0]
+            
+            # Calculate Loss for the batch
+            # criterion expects preds (B, N) and ground_truth (B, H, W)
+            loss = criterion(eigen_vector, labels)
+            running_loss += loss.item()
+            total_subpatches += B_curr
+            
+            for b in range(B_curr):
+                # Compute metrics for each batch item
+                pred_eigen = eigen_vector[b].cpu().numpy().flatten()
+                pred_sign = np.sign(pred_eigen)
+                
+                # Reorder labels to match the graph order (Morton order)
+                order_np = model.order.cpu().numpy()
+                y = labels[b].cpu().numpy().flatten()[order_np]
+                
+                # Oracle Sign Correction (or heuristic if centers are updated)
+                # Note: features_flat is (B, N, C), so we take features_flat[b]
+                sign_correct = correct_pred_sign(pred_sign, features_flat[b], positive_center, negative_center)
+                
+                # Correct sign and get binary prediction (0 or 1)
+                pred_final = (sign_correct * pred_sign == 1).astype(np.int32)
+                y_binary = (y == 1).astype(np.int32)
+                
+                overall_confusion += confusion_matrix(y_binary, pred_final, labels=[0, 1])
 
-                    # Convert predictions and labels to binary (0 and 1)
-                    y_binary = (y == 1).astype(np.int32)
-                    pred_binary = (pred == 1).astype(np.int32)
-                    
-                    # Compute confusion matrix for this quadrant
-                    quadrant_confusion = confusion_matrix(y_binary, pred_binary, labels=[0, 1])
-                    overall_confusion += quadrant_confusion
-
-                    valid_accuracy_list.append(np.sum(y == pred) / len(pred))
-                    valid_f1_score_list.append(f1_score(y, pred, pos_label=1))
-    
     # Calculate metrics from overall confusion matrix
     tn, fp, fn, tp = overall_confusion.ravel()
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     accuracy = (tp + tn) / (tp + tn + fp + fn)
+    avg_val_loss = running_loss / total_subpatches if total_subpatches > 0 else 0
     
-    msg = f"\nOverall Results from Confusion Matrix:\n"
+    msg = f"\nOverall Validation Results (Loss: {avg_val_loss:.6f}):\n"
     msg += f"Confusion Matrix:\n{overall_confusion}\n"
     msg += f"Precision: {precision:.4f}\n"
     msg += f"Recall: {recall:.4f}\n"
@@ -186,72 +178,32 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
     else:
         print(msg)
     
-    return accuracy, f1
+    return accuracy, f1, avg_val_loss
 
 
-def train_model(features_extractor, train_loader, val_loader, config, train_order, train_edge_i, train_edge_j, val_order, val_edges, val_edge_i, val_edge_j, device, criterion, optimizer, train_solver, val_solver, logger=None):
+def train_model(model, train_loader, val_loader, config, device, criterion, optimizer, logger=None):
     best_val_f1 = 0.0
     num_epochs = config['training']['num_epochs']
     patch_size = config['training']['img_height']
-    accumulation_steps = config['training']['accumulation_steps']
-    d_star = config['training']['d_star']
+    accumulation_steps = config['training'].get('accumulation_steps', 1)
     target_crop = config['general']['target_crop']
     save_dir = config['paths']['save_dir']
     
-    if train_solver is None:
-        raise ValueError("train_solver must be specified for training")
-    if val_solver is None:
-        raise ValueError("val_solver must be specified for training (validation phase)")
-    
     for epoch in range(num_epochs):
-        features_extractor.train()
+        model.train()
         running_loss = 0.0
         latest_grad_norm = 0.0
         optimizer.zero_grad()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
         for batch_idx, (bands, labels) in enumerate(pbar):
             bands, labels = bands.to(device), labels.to(device)
+            # labels shape: (B, H, W)
             
-            # Forward pass through feature extractor
-            features = features_extractor(bands).squeeze(0)
+            # Forward pass through the end-to-end model
+            eigen_val, eigen_vector, L, features_flat = model(bands)
             
-            # Process exactly one random subpatch to save memory
-            start_h = random.randint(0, features.shape[0] - patch_size)
-            start_w = random.randint(0, features.shape[1] - patch_size)
-            
-            quadrant_features = features[start_h:start_h+patch_size, start_w:start_w+patch_size, :]
-            quadrant_labels_orig = labels.squeeze(0)[start_h:start_h+patch_size, start_w:start_w+patch_size]
-            
-            quadrant_features = quadrant_features.reshape(-1, quadrant_features.shape[-1])[train_order, :]
-            
-            # Calculate weights
-            features_i = quadrant_features[train_edge_i]
-            features_j = quadrant_features[train_edge_j]
-            distances = ((features_i - features_j) ** 2).sum(dim=1)
-            weights = modified_sigmoid(distances, d_star, scale=1.0)
-            
-            num_nodes = quadrant_features.shape[0]
-            degree = torch.zeros(num_nodes, device=device)
-            degree.index_add_(0, train_edge_i, weights)
-            degree.index_add_(0, train_edge_j, weights)
-            
-            diag_indices = torch.stack([torch.arange(num_nodes, device=device)] * 2, dim=0)
-            off_diag_indices = torch.cat([
-                torch.stack([train_edge_i, train_edge_j], dim=0),
-                torch.stack([train_edge_j, train_edge_i], dim=0)
-            ], dim=1)
-            
-            L_indices = torch.cat([diag_indices, off_diag_indices], dim=1)
-            L_values = torch.cat([degree, -weights, -weights], dim=0)
-            
-            L = torch.sparse_coo_tensor(L_indices, L_values, (num_nodes, num_nodes)).coalesce()
-            
-            _, eigen_vector = train_solver.solve(L, device=device)
-            
-            preds = eigen_vector.t() 
-            
-            gtbound = quadrant_labels_orig.unsqueeze(0) 
-            loss = criterion(preds, gtbound)
+            # eigen_vector shape: (B, N), labels shape: (B, H, W)
+            loss = criterion(eigen_vector, labels)
             
             # Scale loss for gradient accumulation
             loss = loss / accumulation_steps
@@ -261,8 +213,8 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
             if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
                 # Inspect first layer gradients before step
                 first_layer_grad_norm = 0.0
-                if hasattr(features_extractor, 'cnn') and hasattr(features_extractor.cnn, 'block_in'):
-                    first_layer = features_extractor.cnn.block_in[0]
+                if hasattr(model.feature_extractor, 'cnn') and hasattr(model.feature_extractor.cnn, 'block_in'):
+                    first_layer = model.feature_extractor.cnn.block_in[0]
                     if first_layer.weight.grad is not None:
                         first_layer_grad_norm = first_layer.weight.grad.norm().item()
                         latest_grad_norm = first_layer_grad_norm
@@ -278,18 +230,19 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
             })
 
         avg_epoch_loss = running_loss / len(train_loader)
-        end_msg = f"Epoch [{epoch+1}/{num_epochs}], Average Loss: {avg_epoch_loss:.6f}, Latest Grad Norm: {latest_grad_norm:.2e}"
+        
+        # Validation phase
+        positive_center, negative_center = model.feature_extractor.calculate_feature_centers(val_loader)
+        val_accuracy, val_f1, avg_val_loss = validate_model(
+            model, val_loader, criterion, positive_center, negative_center,
+            config, logger=logger
+        )
+
+        end_msg = f"Epoch [{epoch+1}/{num_epochs}], Avg Train Loss: {avg_epoch_loss:.6f}, Avg Val Loss: {avg_val_loss:.6f}, Latest Grad Norm: {latest_grad_norm:.2e}"
         if logger:
             logger.info(end_msg)
         else:
             print(end_msg)
-
-        # Validation phase
-        positive_center, negative_center = features_extractor.calculate_feature_centers(val_loader)
-        val_accuracy, val_f1 = validate_model(
-            features_extractor, val_loader, positive_center, negative_center,
-            config, val_order, val_edges, val_edge_i, val_edge_j, val_solver, logger=logger
-        )
         
         # Save best model
         if val_f1 > best_val_f1:
@@ -297,7 +250,8 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
             save_path = os.path.join(save_dir, f'crop{target_crop}_finetuned_best.pth')
-            torch.save(features_extractor, save_path)
+            # Save the whole model
+            torch.save(model, save_path)
             if logger:
                 logger.info(f"New best model saved with F1: {best_val_f1:.4f} at {save_path}")
             else:
@@ -307,7 +261,7 @@ def train_model(features_extractor, train_loader, val_loader, config, train_orde
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     save_path = os.path.join(save_dir, f'crop{target_crop}_finetuned.pth')
-    torch.save(features_extractor, save_path)
+    torch.save(model, save_path)
     if logger:
         logger.info(f"Model saved to {save_path}")
     else:
@@ -339,34 +293,36 @@ def main():
     img_width = config['training']['img_width']
     window_size = config['training']['window_size']
     
-    # Setup sparse structure for training
-    sparse_image_obj_train = create_sparse_structure_from_images(img_height, img_width, window_size, device)
-    train_order = sparse_image_obj_train['order']
-    train_edges = sparse_image_obj_train['edges']
-    train_edge_i, train_edge_j = train_edges[:, 0], train_edges[:, 1]
-    
-    # Setup sparse structure for validation (using validation specific dims)
-    val_height = config['validation']['img_height']
-    val_width = config['validation']['img_width']
-    sparse_image_obj_val = create_sparse_structure_from_images(val_height, val_width, window_size, device)
-    val_order = sparse_image_obj_val['order']
-    val_edges = sparse_image_obj_val['edges'].cpu().numpy() # eigsh needs numpy
-    val_edge_i = val_edges[:, 0]
-    val_edge_j = val_edges[:, 1]
+    # Setup shared sparse structure for both training and validation
+    sparse_image_obj = create_sparse_structure_from_images(img_height, img_width, window_size, device)
+    order = sparse_image_obj['order']
+    edges = sparse_image_obj['edges']
+    edge_i, edge_j = edges[:, 0], edges[:, 1]
     
     # Setup data and model
     train_loader, val_loader = setup_data_loaders(config)
-    features_extractor = load_feature_extractor(logger, config)
+    
+    checkpoint_dir = config['paths']['checkpoint_dir']
+    checkpoint_path = os.path.join(checkpoint_dir, f'crop{TARGET_CROP}_vs_all.pth')
     
     loss_type = config['training'].get('loss_type', 'signed_laplacian')
-    solver_type = config['training']['solver']['type']
-    logger.info(f"Starting fine-tuning for crop {TARGET_CROP} using {loss_type} and {solver_type} solver for eigenvector extraction.")
+    solver_type_train = config['training']['solver']['type']
+    logger.info(f"Starting end-to-end fine-tuning for crop {TARGET_CROP} using {loss_type} and {solver_type_train} solver.")
     
-    # Setup solvers
-    train_solver = build_eigen_solver(config['training']['solver'])
-    val_solver = build_eigen_solver(config['validation']['solver'])
-    train_solver.to(device)
-    val_solver.to(device)
+    # Inject n_nodes into solver config automatically
+    config['training']['solver']['n_nodes'] = img_height * img_width
+    
+    # Initialize the End-to-End model with the shared structure
+    model = GraphSpectralNet(
+        feature_extractor_checkpoint=checkpoint_path,
+        solver_cfg=config['training']['solver'],
+        order=order,
+        edge_i=edge_i,
+        edge_j=edge_j,
+        d_star=d_star,
+        device=device
+    )
+    model.to(device)
     
     # Initialize loss and optimizer
     if loss_type == 'signed_laplacian':
@@ -378,16 +334,13 @@ def main():
         
     criterion.to(device)
     
-    # Collect all trainable parameters (feature extractor + solvers)
-    trainable_params = list(features_extractor.parameters()) + list(train_solver.parameters())
-    optimizer = optim.Adam(trainable_params, lr=config['training']['learning_rate'])
+    # Collect all trainable parameters from the entire model pipeline
+    optimizer = optim.Adam(model.parameters(), lr=config['training']['learning_rate'])
     
     # Start training
-    train_model(features_extractor, train_loader, val_loader, config,
-                train_order, train_edge_i, train_edge_j, 
-                val_order, val_edges, val_edge_i, val_edge_j, 
+    train_model(model, train_loader, val_loader, config,
                 device, criterion, optimizer, 
-                train_solver=train_solver, val_solver=val_solver, logger=logger)
+                logger=logger)
 
 if __name__ == "__main__":
     main()
