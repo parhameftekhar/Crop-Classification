@@ -474,18 +474,19 @@ class CropClassifierTree:
             self.classifiers[crop_id] = classifier
             self.logger.info(f"Loaded classifier for crop {crop_id}")
     
-    def run_binary_classifiers(self, image):
+    def run_binary_classifiers(self, image, k=1):
         """
         Predict crop labels for each pixel in the input image.
         
         Args:
             image (torch.Tensor): Input image tensor of shape (H, W, C)
+            k (int): Number of eigenvectors to return. Defaults to 1.
             
         Returns:
             dict: Dictionary containing predictions for each crop classifier
                   Keys are crop IDs, values are prediction tensors of shape (H, W)
             dict: Dictionary containing eigen vectors for each crop classifier
-                  Keys are crop IDs, values are eigen vector tensors of shape (H, W)
+                  Keys are crop IDs, values are eigen vector tensors of shape (H, W, k) or (H, W) if k=1
         """
         # Dictionary to store predictions and eigen vectors for each classifier
         predictions = {}
@@ -522,19 +523,26 @@ class CropClassifierTree:
                 L = D - sparse_adjacency
                 
                 # Compute eigenvector and prediction
-                _, eigen_vector = eigsh(L, k=1, which='SA', tol=1e-7)
-                pred = np.sign(eigen_vector).flatten()
+                _, eigen_vector_k = eigsh(L, k=k, which='SA', tol=1e-7)
+                
+                # Use the first eigenvector for prediction and sign correction
+                first_eigen_vector = eigen_vector_k[:, 0]
+                pred = np.sign(first_eigen_vector).flatten()
                 sign = correct_pred_sign(pred, features, positive_center, negative_center)
                 pred = pred * sign
-                eigen_vector = eigen_vector * sign  # Apply sign to eigen_vector
+                eigen_vector_k = eigen_vector_k * sign  # Apply sign correction to all eigenvectors
                 
                 # Reorder prediction and eigen vector back to original order
                 pred = pred[self.reverse_order]
-                eigen_vector = eigen_vector[self.reverse_order]
+                eigen_vector_k = eigen_vector_k[self.reverse_order, :]
                 
                 # Reshape prediction and eigen vector back to image shape
                 predictions[crop_id] = pred.reshape(image.shape[0], image.shape[1])
-                eigen_vectors[crop_id] = eigen_vector.reshape(image.shape[0], image.shape[1])  # Reshape eigen vector
+                reshaped_ev = eigen_vector_k.reshape(image.shape[0], image.shape[1], -1)
+                if reshaped_ev.shape[-1] == 1:
+                    eigen_vectors[crop_id] = reshaped_ev.squeeze(-1)
+                else:
+                    eigen_vectors[crop_id] = reshaped_ev
         
         return predictions, eigen_vectors
 

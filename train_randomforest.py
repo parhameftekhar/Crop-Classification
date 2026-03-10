@@ -6,7 +6,7 @@ from tqdm import tqdm
 import gc
 import joblib
 
-def train_random_forest(input_dir='binary_classifiers_outputs', subsample_ratio=0.1, window_size=3, image_subsample_ratio=0.1):
+def train_random_forest(input_dir='binary_classifiers_outputs_3', subsample_ratio=0.1, window_size=1, image_subsample_ratio=0.1):
     """
     Train a RandomForestClassifier on a subsample of the training set binary outputs with hyperparameter tuning,
     and save the best model.
@@ -120,4 +120,4 @@ def train_random_forest(input_dir='binary_classifiers_outputs', subsample_ratio=
 
 if __name__ == '__main__':
     # Run the training with a 3x3 window and reduced subsampling ratios
-    train_random_forest(window_size=3, image_subsample_ratio=0.5, subsample_ratio=0.2) 
+    train_random_forest(window_size=1, image_subsample_ratio=0.5, subsample_ratio=0.2)

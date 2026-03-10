@@ -38,6 +38,7 @@ MANIFEST
 *.npz
 *.pkl
 *.pickle
+*.joblib
 
 # Large data directories
 raw_data/
@@ -51,6 +52,8 @@ checkpoints/
 logs/
 ensemble/
 visualizations/
+tensorboard/
+notebook/
 
 # Large files
 memory

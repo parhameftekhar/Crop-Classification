@@ -6,7 +6,7 @@ from tqdm import tqdm
 import gc
 import joblib
 
-def evaluate_random_forest(input_dir='binary_classifiers_outputs', window_size=3):
+def evaluate_random_forest(input_dir='binary_classifiers_outputs_3', window_size=1):
     """
     Load a trained RandomForestClassifier and evaluate it on validation and test sets.
     Features are enriched by considering a neighborhood around each pixel.
@@ -111,4 +111,4 @@ def evaluate_random_forest(input_dir='binary_classifiers_outputs', window_size=3
 
 if __name__ == '__main__':
     # Run the evaluation with a 3x3 window
-    evaluate_random_forest(window_size=3) 
+    evaluate_random_forest(window_size=1)

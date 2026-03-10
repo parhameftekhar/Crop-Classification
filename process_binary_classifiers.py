@@ -130,16 +130,20 @@ def process_and_save_binary_outputs(classifier_tree, output_dir='binary_classifi
                         subpatch = image[start_h:start_h+112, start_w:start_w+112, :]
                         subpatch_label = label[start_h:start_h+112, start_w:start_w+112]
                         
-                        # Run binary classifiers on the subpatch
-                        predictions, eigen_vectors = classifier_tree.run_binary_classifiers(subpatch)
+                        # Run binary classifiers on the subpatch with k=3
+                        k = 3
+                        predictions, eigen_vectors = classifier_tree.run_binary_classifiers(subpatch, k=k)
                         
-                        # Store eigen vectors for this subpatch
-                        concatenated = np.stack([eigen_vectors[crop_id] for crop_id in classifier_tree.crop_order], axis=-1)
+                        # Store eigen vectors for this subpatch - concatenate along channel dimension
+                        # Each crop gives (H, W, k), so result is (H, W, k * num_crops)
+                        concatenated = np.concatenate([eigen_vectors[crop_id].reshape(112, 112, k) for crop_id in classifier_tree.crop_order], axis=-1)
                         subpatch_eigen_vectors.append(concatenated)
                         subpatch_labels.append(subpatch_label.numpy())
                 
                 # Reconstruct full image eigen vectors from subpatches
-                full_eigen_vectors = np.zeros((1, 224, 224, len(classifier_tree.crop_order)))
+                # Shape: (1, 224, 224, k * num_crops)
+                num_total_channels = len(classifier_tree.crop_order) * k
+                full_eigen_vectors = np.zeros((1, 224, 224, num_total_channels))
                 full_labels = np.zeros((1, 224, 224))
                 idx = 0
                 for i in range(2):
@@ -201,4 +205,4 @@ if __name__ == '__main__':
         del train_loader
     
     # Process and save outputs
-    process_and_save_binary_outputs(tree)
+    process_and_save_binary_outputs(tree, output_dir='binary_classifiers_outputs_3')
