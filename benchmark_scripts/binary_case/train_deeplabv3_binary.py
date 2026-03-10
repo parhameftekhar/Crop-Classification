@@ -12,7 +12,7 @@ import sys
 from torch.utils.tensorboard import SummaryWriter
 
 # Data setup
-TARGET_CROP = -1  # The crop ID we're training to detect
+TARGET_CROP = 176  # The crop ID we're training to detect
 UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
 
 # Create directories for logs, checkpoints, and TensorBoard runs
@@ -59,8 +59,8 @@ train_loader = setup_training_loader(
     train_batch_size=16,
     crop_band_index=18,
     device='cuda',
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 val_loader = setup_training_loader(
@@ -70,8 +70,8 @@ val_loader = setup_training_loader(
     train_batch_size=16,
     crop_band_index=18,
     device='cuda',
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 test_loader = setup_training_loader(
@@ -81,8 +81,8 @@ test_loader = setup_training_loader(
     train_batch_size=16,
     crop_band_index=18,
     device='cuda',
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 # Training setup
@@ -198,8 +198,17 @@ for epoch in range(num_epochs):
         torch.save(model.state_dict(), f'checkpoints/benchmark/binary_case/best_deeplabv3_model_binary_crop{TARGET_CROP}.pth')
         logger.info(f'New best model saved with validation F1: {v_f1:.4f}')
 
-# Test
+# Validation and Test with the best model
 model.load_state_dict(torch.load(f'checkpoints/benchmark/binary_case/best_deeplabv3_model_binary_crop{TARGET_CROP}.pth'))
+
+# Evaluate best model on validation set
+best_val_loss, best_val_acc, best_val_prec, best_val_rec, best_val_f1 = validate(model, val_loader, criterion, device)
+logger.info(
+    f'Best Model Validation Results - Loss: {best_val_loss:.4f}, Acc: {best_val_acc:.4f}, '
+    f'Prec: {best_val_prec:.4f}, Rec: {best_val_rec:.4f}, F1: {best_val_f1:.4f}'
+)
+
+# Evaluate best model on test set
 test_loss, test_acc, test_prec, test_rec, test_f1 = validate(model, test_loader, criterion, device)
 logger.info(f'Test Results - Loss: {test_loss:.4f}, Acc: {test_acc:.4f}, Prec: {test_prec:.4f}, Rec: {test_rec:.4f}, F1: {test_f1:.4f}')
 

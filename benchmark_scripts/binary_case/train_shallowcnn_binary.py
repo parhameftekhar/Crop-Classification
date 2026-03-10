@@ -122,8 +122,8 @@ train_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 val_loader = setup_training_loader(
@@ -134,8 +134,8 @@ val_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 test_loader = setup_training_loader(
@@ -146,8 +146,8 @@ test_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 # Training setup
@@ -324,14 +324,23 @@ for epoch in epoch_pbar:
         logger.info(f'Epoch {epoch+1}/{num_epochs} - New best model saved with validation F1-score: {val_f1:.4f}')
         logger.info(f'Epoch {epoch+1}/{num_epochs} - Validation metrics - Accuracy: {val_acc:.4f}, Precision: {val_prec:.4f}, Recall: {val_rec:.4f}')
 
-# Load best model for testing
+# Load best model for validation and testing
 import os
 checkpoint_path = f'best_shallowcnn_model_binary_crop{TARGET_CROP}.pth'
 if os.path.exists(checkpoint_path):
     model.load_state_dict(torch.load(checkpoint_path))
-    logger.info('Loaded best model for testing')
+    logger.info('Loaded best model for validation and testing')
 else:
-    logger.warning(f'Checkpoint not found: {checkpoint_path}. Using final model weights for testing.')
+    logger.warning(f'Checkpoint not found: {checkpoint_path}. Using final model weights for validation and testing.')
+
+# Evaluate best model on validation set
+best_val_loss, best_val_acc, best_val_prec, best_val_rec, best_val_f1 = validate(model, val_loader, criterion, device)
+logger.info('Best Model Validation Results:')
+logger.info(f'Val Loss: {best_val_loss:.4f}')
+logger.info(f'Val Accuracy: {best_val_acc:.4f}')
+logger.info(f'Val Precision: {best_val_prec:.4f}')
+logger.info(f'Val Recall: {best_val_rec:.4f}')
+logger.info(f'Val F1-score: {best_val_f1:.4f}')
 
 # Test the model
 test_loss, test_acc, test_prec, test_rec, test_f1 = validate(model, test_loader, criterion, device)

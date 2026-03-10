@@ -1,399 +1,282 @@
+# train_segformer.py
+
 import torch
 import torch.nn as nn
 from transformers import SegformerForSemanticSegmentation, SegformerConfig
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 import numpy as np
+from torch.utils.data import DataLoader
 import os
 import logging
-from datetime import datetime
-from data_manager import create_modified_crop_labels
+import sys
+from data_manager import setup_training_loader
+from tqdm import tqdm
 
-# Setup logging
-def setup_logging():
-    # Use fixed name for log file in current directory
-    log_file = 'segformer.log'
-    
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler()  # Also print to console
-        ]
-    )
-    return log_file
 
-class CropDataset(torch.utils.data.Dataset):
-    def __init__(self, data, transform=None):
-        self.data = data.astype(float)
-        self.transform = transform
-        
-        # Fixed mapping for known labels
-        self.label_map = {
-            -1: 0,  # background
-            1: 1,   # corn
-            5: 2,   # soybean
-            23: 3,  # spring wheat
-            176: 4  # grassland/pasture
-        }
-        self.num_classes = 5  # 5 classes including background
-        
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        # Get the image and label
-        image = self.data[idx, :, :, :-1]  # All bands except last one (label)
-        label = self.data[idx, :, :, -1]   # Last band is the label
-        
-        # Scale first 18 bands by 0.0001 and clip to [0,1]
-        image[:, :, :18] = np.clip(image[:, :, :18] * 0.0001, 0, 1)
-        
-        # Convert to torch tensors
-        image = torch.from_numpy(image).float()
-        
-        # Map labels to 0 to 4 range
-        label = np.vectorize(self.label_map.get)(label)
-        label = torch.from_numpy(label).long()
-        
-        if self.transform:
-            image = self.transform(image)
-            
-        return image, label
+# Data setup
+TARGET_CROP = 176  # The crop ID we're training to detect
+UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
 
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'training_segformer_binary_crop{TARGET_CROP}.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Model setup
+logger.info('Initializing SegFormer model for binary classification')
+
+config = SegformerConfig(
+    num_labels=2,          # Binary: background + target crop
+    image_size=224,
+    num_channels=18,       # 18 satellite bands
+    depths=[2, 2, 2, 2],
+    sr_ratios=[8, 4, 2, 1],
+    hidden_sizes=[32, 64, 160, 256],
+    num_attention_heads=[1, 2, 5, 8],
+    drop_path_rate=0.1,
+    semantic_loss_ignore_index=255,
+)
+
+model = SegformerForSemanticSegmentation(config)
+
+# Initialize weights
+def init_weights(m):
+    if isinstance(m, (nn.Conv2d, nn.Linear)):
+        nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+
+model.apply(init_weights)
+logger.info('Model initialized with Kaiming initialization')
+
+logger.info(f'Target crop: {TARGET_CROP}, Unchanged crops: {UNCHANGED_CROPS}')
+
+# Setup data loaders
+logger.info('Setting up data loaders')
+train_loader = setup_training_loader(
+    path_to_train_data='./training_data/train_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=[TARGET_CROP],
+    train_batch_size=8,
+    crop_band_index=18,
+    device='cuda',
+    ignore_crops=None,
+    min_ratio=0,
+    max_ratio=1
+)
+
+val_loader = setup_training_loader(
+    path_to_train_data='./training_data/val_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=[TARGET_CROP],
+    train_batch_size=8,
+    crop_band_index=18,
+    device='cuda',
+    ignore_crops=None,
+    min_ratio=0,
+    max_ratio=1
+)
+
+test_loader = setup_training_loader(
+    path_to_train_data='./training_data/test_patches.npy',
+    unchanged_crops=UNCHANGED_CROPS,
+    target_crops=[TARGET_CROP],
+    train_batch_size=8,
+    crop_band_index=18,
+    device='cuda',
+    ignore_crops=None,
+    min_ratio=0,
+    max_ratio=1
+)
+
+# Training setup
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
+logger.info(f'Training on device: {device}')
+
+# Optimizer and scheduler
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+
+
+# Function to transform labels from +1/-1 to 0/1
+def transform_labels(labels):
+    return ((labels + 1) / 2).long()  # Converts -1 to 0 and +1 to 1
+
+
+# Function to calculate precision, recall, and F1-score for binary classification
+def calculate_metrics(outputs, labels):
+    _, predicted = torch.max(outputs, 1)
+    true_positive  = ((predicted == 1) & (labels == 1)).sum().item()
+    false_positive = ((predicted == 1) & (labels == 0)).sum().item()
+    false_negative = ((predicted == 0) & (labels == 1)).sum().item()
+    true_negative  = ((predicted == 0) & (labels == 0)).sum().item()
+
+    precision = true_positive / (true_positive + false_positive) if (true_positive + false_positive) > 0 else 0
+    recall    = true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+    f1        = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    accuracy  = (true_positive + true_negative) / (true_positive + true_negative + false_positive + false_negative)
+
+    return accuracy, precision, recall, f1
+
+
+# Training function
 def train_epoch(model, train_loader, optimizer, device):
     model.train()
     total_loss = 0
-    correct = 0
-    total_pixels = 0
-    
+    total_accuracy = 0
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+    batches = 0
+
     pbar = tqdm(train_loader, desc='Training')
-    for batch_idx, (images, labels) in enumerate(pbar):
-        try:
-            # Move data to device
-            images = images.permute(0, 3, 1, 2).to(device)  # Change from (B, H, W, C) to (B, C, H, W)
-            labels = labels.to(device)
-            
-            # Forward pass
+    for images, labels in pbar:
+        images = images.permute(0, 3, 1, 2).to(device)  # (B, C, H, W)
+        labels = transform_labels(labels).to(device)
+
+        # Forward pass
+        outputs = model(pixel_values=images, labels=labels)
+        loss = outputs.loss
+
+        # Upsample logits to input resolution for metrics
+        logits = torch.nn.functional.interpolate(
+            outputs.logits,
+            size=labels.shape[-2:],
+            mode='bilinear',
+            align_corners=False
+        )
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        accuracy, precision, recall, f1 = calculate_metrics(logits, labels)
+
+        total_loss += loss.item()
+        total_accuracy += accuracy
+        total_precision += precision
+        total_recall += recall
+        total_f1 += f1
+        batches += 1
+
+        pbar.set_postfix({
+            'loss': f'{loss.item():.4f}',
+            'acc': f'{accuracy:.4f}',
+            'f1': f'{f1:.4f}'
+        })
+
+    avg_loss = total_loss / batches
+    avg_acc  = total_accuracy / batches
+    avg_prec = total_precision / batches
+    avg_rec  = total_recall / batches
+    avg_f1   = total_f1 / batches
+
+    logger.info(f'Epoch {epoch+1}/{num_epochs} - Training - Loss: {avg_loss:.4f}, Accuracy: {avg_acc:.4f}, Precision: {avg_prec:.4f}, Recall: {avg_rec:.4f}, F1: {avg_f1:.4f}')
+    return avg_loss, avg_acc, avg_prec, avg_rec, avg_f1
+
+
+# Validation function
+def validate(model, val_loader, device):
+    model.eval()
+    total_loss = 0
+    total_accuracy = 0
+    total_precision = 0
+    total_recall = 0
+    total_f1 = 0
+    batches = 0
+
+    pbar = tqdm(val_loader, desc='Validation')
+    with torch.no_grad():
+        for images, labels in pbar:
+            images = images.permute(0, 3, 1, 2).to(device)
+            labels = transform_labels(labels).to(device)
+
             outputs = model(pixel_values=images, labels=labels)
             loss = outputs.loss
-            
-            # Backward pass and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            # Calculate accuracy
-            logits = outputs.logits
-            # For accuracy calculation, upsample logits to match original image size
-            upsampled_logits = torch.nn.functional.interpolate(
-                logits,
+
+            logits = torch.nn.functional.interpolate(
+                outputs.logits,
                 size=labels.shape[-2:],
                 mode='bilinear',
                 align_corners=False
             )
-            _, predicted = torch.max(upsampled_logits, 1)
-            correct += (predicted == labels).sum().item()
-            total_pixels += labels.numel()
+
+            accuracy, precision, recall, f1 = calculate_metrics(logits, labels)
+
             total_loss += loss.item()
-            
-            # Update progress bar
+            total_accuracy += accuracy
+            total_precision += precision
+            total_recall += recall
+            total_f1 += f1
+            batches += 1
+
             pbar.set_postfix({
                 'loss': f'{loss.item():.4f}',
-                'acc': f'{(predicted == labels).float().mean().item():.4f}'
+                'acc': f'{accuracy:.4f}',
+                'f1': f'{f1:.4f}'
             })
-            
-            # Log batch metrics every 10 batches
-            # if batch_idx % 10 == 0:
-            #     logging.info(f'Batch {batch_idx}: Loss = {loss.item():.4f}, Accuracy = {(predicted == labels).float().mean().item():.4f}')
-                
-        except Exception as e:
-            logging.error(f'Error in training batch {batch_idx}: {str(e)}')
-            raise
-    
-    return total_loss / len(train_loader), correct / total_pixels
 
-def analyze_label_distribution(dataset):
-    """Analyze the distribution of labels in the dataset."""
-    label_counts = {i: 0 for i in range(5)}  # 5 classes
-    total_pixels = 0
-    
-    for idx in range(len(dataset)):
-        _, label = dataset[idx]
-        unique, counts = torch.unique(label, return_counts=True)
-        for u, c in zip(unique.tolist(), counts.tolist()):
-            label_counts[u] += c
-            total_pixels += c
-    
-    print("\nLabel Distribution:")
-    for label, count in label_counts.items():
-        percentage = (count / total_pixels) * 100
-        print(f"Class {label}: {count} pixels ({percentage:.2f}%)")
+    avg_loss = total_loss / batches
+    avg_acc  = total_accuracy / batches
+    avg_prec = total_precision / batches
+    avg_rec  = total_recall / batches
+    avg_f1   = total_f1 / batches
 
-def validate(model, val_loader, device):
-    model.eval()
-    total_loss = 0
-    correct = 0
-    total_pixels = 0
-    
-    # Initialize confusion matrix
-    confusion_matrix = torch.zeros(5, 5, device=device)
-    
-    pbar = tqdm(val_loader, desc='Validation')
-    with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(pbar):
-            try:
-                # Move data to device
-                images = images.permute(0, 3, 1, 2).to(device)
-                labels = labels.to(device)
-                
-                # Forward pass
-                outputs = model(pixel_values=images, labels=labels)
-                loss = outputs.loss
-                
-                # Calculate accuracy
-                logits = outputs.logits
-                upsampled_logits = torch.nn.functional.interpolate(
-                    logits,
-                    size=labels.shape[-2:],
-                    mode='bilinear',
-                    align_corners=False
-                )
-                _, predicted = torch.max(upsampled_logits, 1)
-                
-                # Update confusion matrix
-                for t, p in zip(labels.view(-1), predicted.view(-1)):
-                    confusion_matrix[t.long(), p.long()] += 1
-                
-                correct += (predicted == labels).sum().item()
-                total_pixels += labels.numel()
-                total_loss += loss.item()
-                
-                # Update progress bar
-                pbar.set_postfix({
-                    'loss': f'{loss.item():.4f}',
-                    'acc': f'{(predicted == labels).float().mean().item():.4f}'
-                })
-                
-            except Exception as e:
-                logging.error(f'Error in validation batch {batch_idx}: {str(e)}')
-                raise
-    
-    # Calculate per-class accuracy
-    per_class_acc = confusion_matrix.diag() / confusion_matrix.sum(1)
-    logging.info("\nPer-class Accuracy:")
-    for i, acc in enumerate(per_class_acc):
-        logging.info(f"Class {i}: {acc:.4f}")
-    
-    # Log confusion matrix
-    logging.info("\nConfusion Matrix:")
-    logging.info(confusion_matrix.cpu().numpy())
-    
-    return total_loss / len(val_loader), correct / total_pixels
+    logger.info(f'Epoch {epoch+1}/{num_epochs} - Validation - Loss: {avg_loss:.4f}, Accuracy: {avg_acc:.4f}, Precision: {avg_prec:.4f}, Recall: {avg_rec:.4f}, F1: {avg_f1:.4f}')
+    return avg_loss, avg_acc, avg_prec, avg_rec, avg_f1
 
-def main():
-    try:
-        # Setup logging
-        log_file = setup_logging()
-        logging.info("Starting training process")
-        logging.info(f"Log file: {log_file}")
-        
-        # Log system info
-        logging.info(f"PyTorch version: {torch.__version__}")
-        logging.info(f"CUDA available: {torch.cuda.is_available()}")
-        if torch.cuda.is_available():
-            logging.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
-        
-        # Load data
-        logging.info("Loading datasets...")
-        train_data = np.load('./training_data/train_patches.npy')
-        valid_data = np.load('./training_data/val_patches.npy')
-        test_data = np.load('./training_data/test_patches.npy')
-        
-        logging.info(f"Training samples: {len(train_data)}")
-        logging.info(f"Validation samples: {len(valid_data)}")
-        logging.info(f"Test samples: {len(test_data)}")
 
-        unchanged_crops = [1, 5, 23, 176]
-        train_data = create_modified_crop_labels(train_data, unchanged_crops=unchanged_crops)
-        valid_data = create_modified_crop_labels(valid_data, unchanged_crops=unchanged_crops)
-        test_data = create_modified_crop_labels(test_data, unchanged_crops=unchanged_crops)
+# Training loop
+num_epochs = 100
+best_val_f1 = 0.0
+logger.info(f'Starting training for {num_epochs} epochs')
 
-        # Create datasets
-        train_dataset = CropDataset(train_data)
-        val_dataset = CropDataset(valid_data)
-        test_dataset = CropDataset(test_data)
-        
-        # Analyze label distribution
-        logging.info("\nAnalyzing training set label distribution:")
-        analyze_label_distribution(train_dataset)
-        logging.info("\nAnalyzing validation set label distribution:")
-        analyze_label_distribution(val_dataset)
+epoch_pbar = tqdm(range(num_epochs), desc='Epochs')
+for epoch in epoch_pbar:
+    train_loss, train_acc, train_prec, train_rec, train_f1 = train_epoch(model, train_loader, optimizer, device)
+    val_loss, val_acc, val_prec, val_rec, val_f1 = validate(model, val_loader, device)
 
-        batch_size = 8
-        # Create data loaders
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    scheduler.step()
 
-        # Initialize model
-        logging.info("Initializing Segformer model from scratch...")
-        # Comment out pretrained model loading
-        # model = SegformerForSemanticSegmentation.from_pretrained(
-        #     "nvidia/mit-b0",
-        #     num_labels=5,
-        #     ignore_mismatched_sizes=True
-        # )
+    epoch_pbar.set_postfix({
+        'train_loss': f'{train_loss:.4f}',
+        'train_acc':  f'{train_acc:.4f}',
+        'train_f1':   f'{train_f1:.4f}',
+        'val_loss':   f'{val_loss:.4f}',
+        'val_acc':    f'{val_acc:.4f}',
+        'val_f1':     f'{val_f1:.4f}'
+    })
 
-        # Initialize model from scratch
-        # Create configuration
-        config = SegformerConfig(
-            num_labels=5,
-            image_size=224,  # Assuming your input size is 224x224
-            num_channels=18,  # 18 input channels for satellite data
-            depths=[2, 2, 2, 2],  # Number of transformer blocks in each stage
-            sr_ratios=[8, 4, 2, 1],  # Spatial reduction ratios
-            hidden_sizes=[32, 64, 160, 256],  # Hidden sizes for each stage
-            num_attention_heads=[1, 2, 5, 8],  # Number of attention heads
-            drop_path_rate=0.1,  # Drop path rate for stochastic depth
-            semantic_loss_ignore_index=255,  # Ignore index for loss calculation
-            loss_type="weighted_ce",  # Use weighted cross entropy
-            label_smoothing=0.1  # Add label smoothing
-        )
-        
-        # Initialize model with custom config
-        model = SegformerForSemanticSegmentation(config)
-        
-        # Calculate class weights based on inverse frequency
-        def calculate_class_weights(dataset):
-            label_counts = {i: 0 for i in range(5)}
-            total_pixels = 0
-            
-            for idx in range(len(dataset)):
-                _, label = dataset[idx]
-                unique, counts = torch.unique(label, return_counts=True)
-                for u, c in zip(unique.tolist(), counts.tolist()):
-                    label_counts[u] += c
-                    total_pixels += c
-            
-            # Calculate weights as inverse of frequency
-            weights = torch.tensor([
-                total_pixels / (5 * label_counts[i]) if label_counts[i] > 0 else 1.0
-                for i in range(5)
-            ], device=device)
-            
-            return weights
-        
-        # Calculate and set class weights
-        class_weights = calculate_class_weights(train_dataset)
-        model.classifier.weight = nn.Parameter(class_weights.unsqueeze(1) * model.classifier.weight)
-        logging.info(f"Class weights: {class_weights.tolist()}")
-        
-        # Initialize weights using Kaiming initialization
-        def init_weights(m):
-            if isinstance(m, (nn.Conv2d, nn.Linear)):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-        
-        model.apply(init_weights)
-        logging.info("Model initialized with Kaiming initialization")
+    if val_f1 > best_val_f1:
+        best_val_f1 = val_f1
+        torch.save(model.state_dict(), f'best_segformer_model_binary_crop{TARGET_CROP}.pth')
+        logger.info(f'Epoch {epoch+1}/{num_epochs} - New best model saved with validation F1-score: {val_f1:.4f}')
+        logger.info(f'Epoch {epoch+1}/{num_epochs} - Validation metrics - Accuracy: {val_acc:.4f}, Precision: {val_prec:.4f}, Recall: {val_rec:.4f}')
 
-        # Modify the first conv layer to accept 18 input channels instead of 3
-        logging.info("Modifying model architecture for 18 input channels...")
-        old_proj = model.segformer.encoder.patch_embeddings[0].proj
-        new_proj = nn.Conv2d(
-            in_channels=18,  # Changed from 3 to 18
-            out_channels=old_proj.out_channels,
-            kernel_size=old_proj.kernel_size,
-            stride=old_proj.stride,
-            padding=old_proj.padding,
-            bias=old_proj.bias is not None
-        )
+# Load best model for validation and testing
+model.load_state_dict(torch.load(f'best_segformer_model_binary_crop{TARGET_CROP}.pth'))
+logger.info('Loaded best model for validation and testing')
 
-        # Initialize the new projection layer with Kaiming initialization
-        nn.init.kaiming_normal_(new_proj.weight, mode='fan_out', nonlinearity='relu')
-        if new_proj.bias is not None:
-            nn.init.zeros_(new_proj.bias)
+# Evaluate best model on validation set
+best_val_loss, best_val_acc, best_val_prec, best_val_rec, best_val_f1 = validate(model, val_loader, device)
+logger.info('Best Model Validation Results:')
+logger.info(f'Val Loss: {best_val_loss:.4f}')
+logger.info(f'Val Accuracy: {best_val_acc:.4f}')
+logger.info(f'Val Precision: {best_val_prec:.4f}')
+logger.info(f'Val Recall: {best_val_rec:.4f}')
+logger.info(f'Val F1-score: {best_val_f1:.4f}')
 
-        # Replace the old projection layer with the new one
-        model.segformer.encoder.patch_embeddings[0].proj = new_proj
-
-        # Move model to device
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        model = model.to(device)
-        logging.info(f"Model moved to device: {device}")
-
-        # Training setup
-        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-2)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        logging.info("Training setup completed")
-
-        # Training loop
-        num_epochs = 100
-        best_val_acc = 0.0
-
-        # Create checkpoints directory if it doesn't exist
-        if not os.path.exists('checkpoints'):
-            os.makedirs('checkpoints')
-            logging.info("Created checkpoints directory")
-
-        # Add tqdm for epochs
-        logging.info("Starting training loop...")
-        epoch_pbar = tqdm(range(num_epochs), desc='Epochs')
-        for epoch in epoch_pbar:
-            try:
-                # Training
-                train_loss, train_acc = train_epoch(model, train_loader, optimizer, device)
-                
-                # Validation
-                val_loss, val_acc = validate(model, val_loader, device)
-                
-                # Update learning rate
-                scheduler.step()
-                
-                # Log epoch metrics
-                logging.info(f"Epoch {epoch + 1}/{num_epochs}:")
-                logging.info(f"  Training - Loss: {train_loss:.4f}, Accuracy: {train_acc:.4f}")
-                logging.info(f"  Validation - Loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}")
-                
-                # Update epoch progress bar
-                epoch_pbar.set_postfix({
-                    'train_loss': f'{train_loss:.4f}',
-                    'train_acc': f'{train_acc:.4f}',
-                    'val_loss': f'{val_loss:.4f}',
-                    'val_acc': f'{val_acc:.4f}'
-                })
-                
-                # Save best model
-                if val_acc > best_val_acc:
-                    best_val_acc = val_acc
-                    checkpoint_path = 'checkpoints/best_segformer_model.pth'
-                    torch.save(model.state_dict(), checkpoint_path)
-                    logging.info(f"New best model saved with validation accuracy: {val_acc:.4f}")
-                    logging.info(f"Checkpoint saved to: {checkpoint_path}")
-                    
-            except Exception as e:
-                logging.error(f"Error in epoch {epoch + 1}: {str(e)}")
-                raise
-
-        # Load best model for testing
-        logging.info("Loading best model for final testing...")
-        model.load_state_dict(torch.load('checkpoints/best_segformer_model.pth'))
-
-        # Test the model
-        logging.info("Running final test evaluation...")
-        test_loss, test_acc = validate(model, test_loader, device)
-        logging.info(f"Final Test Results:")
-        logging.info(f"Test Loss: {test_loss:.4f}, Test Accuracy: {test_acc:.4f}")
-        
-        logging.info("Training completed successfully!")
-        
-    except Exception as e:
-        logging.error(f"Training failed with error: {str(e)}")
-        raise
-
-if __name__ == '__main__':
-    main() 
+# Test the model
+test_loss, test_acc, test_prec, test_rec, test_f1 = validate(model, test_loader, device)
+logger.info('Test Results:')
+logger.info(f'Test Loss: {test_loss:.4f}')
+logger.info(f'Test Accuracy: {test_acc:.4f}')
+logger.info(f'Test Precision: {test_prec:.4f}')
+logger.info(f'Test Recall: {test_rec:.4f}')
+logger.info(f'Test F1-score: {test_f1:.4f}')

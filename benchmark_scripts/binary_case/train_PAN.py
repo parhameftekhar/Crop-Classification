@@ -15,12 +15,16 @@ import sys
 TARGET_CROP = 176  # The crop ID we're training to detect
 UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
 
+# Directories
+os.makedirs('logs/benchmark/binary_case', exist_ok=True)
+os.makedirs('checkpoints/benchmark/binary_case', exist_ok=True)
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'training_pan_binary_crop{TARGET_CROP}.log'),
+        logging.FileHandler(f'logs/benchmark/binary_case/training_pan_binary_crop{TARGET_CROP}.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -53,8 +57,8 @@ train_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 val_loader = setup_training_loader(
@@ -65,8 +69,8 @@ val_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 test_loader = setup_training_loader(
@@ -77,8 +81,8 @@ test_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 # Training setup
@@ -288,13 +292,25 @@ def main():
             # Save best model based on validation F1 score
             if val_f1 > best_val_f1:
                 best_val_f1 = val_f1
-                torch.save(model.state_dict(), f'best_pan_binary_crop{TARGET_CROP}.pth')
+                torch.save(model.state_dict(), f'checkpoints/benchmark/binary_case/best_pan_binary_crop{TARGET_CROP}.pth')
                 logger.info(f'New best model saved with validation F1: {val_f1:.4f}')
                 logger.info(f'Validation metrics - Precision: {val_precision:.4f}, Recall: {val_recall:.4f}, Accuracy: {val_accuracy:.4f}')
         
-        # Load best model for testing
-        logger.info('Loading best model for testing...')
-        model.load_state_dict(torch.load(f'best_pan_binary_crop{TARGET_CROP}.pth'))
+        # Load best model for validation and testing
+        logger.info('Loading best model for validation and testing...')
+        model.load_state_dict(torch.load(f'checkpoints/benchmark/binary_case/best_pan_binary_crop{TARGET_CROP}.pth'))
+        
+        # Validation phase with best model
+        logger.info('Evaluating best model on validation set...')
+        best_val_loss, best_val_precision, best_val_recall, best_val_f1, best_val_accuracy = validate_epoch(
+            model, val_loader, criterion, device
+        )
+        logger.info('Best Model Validation Results:')
+        logger.info(f'Val Loss: {best_val_loss:.4f}')
+        logger.info(f'Val Precision: {best_val_precision:.4f}')
+        logger.info(f'Val Recall: {best_val_recall:.4f}')
+        logger.info(f'Val F1-Score: {best_val_f1:.4f}')
+        logger.info(f'Val Accuracy: {best_val_accuracy:.4f}')
         
         # Test phase
         logger.info('Testing best model...')

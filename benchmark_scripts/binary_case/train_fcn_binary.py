@@ -12,15 +12,19 @@ import sys
 
 
 # Data setup
-TARGET_CROP = -1  # The crop ID we're training to detect
+TARGET_CROP = 176  # The crop ID we're training to detect
 UNCHANGED_CROPS = [1, 5, 23, 176]  # List of unchanged crops
+
+# Directories
+os.makedirs('logs/benchmark/binary_case', exist_ok=True)
+os.makedirs('checkpoints/benchmark/binary_case', exist_ok=True)
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'training_fcn_binary_crop{TARGET_CROP}.log'),
+        logging.FileHandler(f'logs/benchmark/binary_case/training_fcn_binary_crop{TARGET_CROP}.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
@@ -55,8 +59,8 @@ train_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 val_loader = setup_training_loader(
@@ -67,8 +71,8 @@ val_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 test_loader = setup_training_loader(
@@ -79,8 +83,8 @@ test_loader = setup_training_loader(
     crop_band_index=18,
     device='cuda',
     ignore_crops=None,
-    min_ratio=0.1,
-    max_ratio=0.9
+    min_ratio=0,
+    max_ratio=1
 )
 
 # Training setup
@@ -224,13 +228,22 @@ for epoch in epoch_pbar:
     
     if val_f1 > best_val_f1:
         best_val_f1 = val_f1
-        torch.save(model.state_dict(), f'best_fcn_model_binary_crop{TARGET_CROP}.pth')
+        torch.save(model.state_dict(), f'checkpoints/benchmark/binary_case/best_fcn_model_binary_crop{TARGET_CROP}.pth')
         logger.info(f'Epoch {epoch+1}/{num_epochs} - New best model saved with validation F1-score: {val_f1:.4f}')
         logger.info(f'Epoch {epoch+1}/{num_epochs} - Validation metrics - Accuracy: {val_acc:.4f}, Precision: {val_prec:.4f}, Recall: {val_rec:.4f}')
 
-# Load best model for testing
-model.load_state_dict(torch.load(f'best_fcn_model_binary_crop{TARGET_CROP}.pth'))
-logger.info('Loaded best model for testing')
+# Load best model for validation and testing
+model.load_state_dict(torch.load(f'checkpoints/benchmark/binary_case/best_fcn_model_binary_crop{TARGET_CROP}.pth'))
+logger.info('Loaded best model for validation and testing')
+
+# Evaluate best model on validation set
+best_val_loss, best_val_acc, best_val_prec, best_val_rec, best_val_f1 = validate(model, val_loader, criterion, device)
+logger.info('Best Model Validation Results:')
+logger.info(f'Val Loss: {best_val_loss:.4f}')
+logger.info(f'Val Accuracy: {best_val_acc:.4f}')
+logger.info(f'Val Precision: {best_val_prec:.4f}')
+logger.info(f'Val Recall: {best_val_rec:.4f}')
+logger.info(f'Val F1-score: {best_val_f1:.4f}')
 
 # Test the model
 test_loss, test_acc, test_prec, test_rec, test_f1 = validate(model, test_loader, criterion, device)
@@ -239,4 +252,4 @@ logger.info(f'Test Loss: {test_loss:.4f}')
 logger.info(f'Test Accuracy: {test_acc:.4f}')
 logger.info(f'Test Precision: {test_prec:.4f}')
 logger.info(f'Test Recall: {test_rec:.4f}')
-logger.info(f'Test F1-score: {test_f1:.4f}') 
+logger.info(f'Test F1-score: {test_f1:.4f}')
