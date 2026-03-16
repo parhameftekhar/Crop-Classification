@@ -43,6 +43,18 @@ This document tracks the strategic initiatives and experimental ideas to push th
 - [x] Pre-process high-resolution patches into **56x56** and **32x32** subpatch datasets for efficient training.
 - [ ] Optimize the trade-off between **Rayleigh** and **Power Method** solvers during backpropagation.
 
+### 7️⃣ Gradient Dynamics & Stability Analysis (✅ Done)
+> *Objective: Gain a deeper understanding of how gradients flow through the differentiable solver to ensure stable and effective learning.*
+- [x] Implement **gradient logging** for each layer in the feature extractor and the solver's internal parameters.
+- [ ] Analyze the magnitude and variance of gradients across different solvers (Power Method vs. Rayleigh).
+- [ ] Investigate potential **gradient vanishing/exploding** issues caused by the iterative nature of the solvers.
+
+### 8️⃣ Step-Based Validation (✅ Done)
+> *Objective: Monitor model performance more granularly by validating every N steps instead of waiting for a full epoch.*
+- [x] Modify the training loop to trigger validation every `validation_steps` (e.g., every 1000 batches).
+- [x] Implement a **Running Validation F1** tracker to allow for faster experimentation and early stopping.
+- [x] Compare training efficiency between epoch-based and step-based evaluation.
+
 ---
 
 ## 🛠 Status Dashboard
@@ -55,6 +67,8 @@ This document tracks the strategic initiatives and experimental ideas to push th
 | Sign Correction | 🔴 High | 🔴 High | 🏁 In Progress |
 | Eigen Solver Init | 🟡 Med | 🟡 Med | 🕒 Pending |
 | End-to-End Tuning | 🔴 High | 🔴 High | 🏁 In Progress |
+| Gradient Analysis | 🔴 High | 🟡 Med | ✅ Done |
+| Step-Based Validation | 🔴 High | 🟢 Low | ✅ Done |
 
 ---
 

@@ -9,8 +9,12 @@ data_loader:
   batch_size: 4
   crop_band_index: 18
   device: 'cuda'
-  min_ratio: 0.1
-  max_ratio: 0.9
+  train:
+    min_ratio: 0
+    max_ratio: 1
+  val:
+    min_ratio: 0
+    max_ratio: 1
 
 paths:
   checkpoint_dir: './checkpoints/v2'
@@ -24,10 +28,11 @@ training:
   learning_rate: 0.0001
   loss_type: 'signed_laplacian' # options: 'signed_laplacian', 'normalized_correlation'
   num_epochs: 50
+  validation_steps: 1000 # Add step-based validation
   accumulation_steps: 16
   solver:
     type: 'rayleigh'
-    iterations: 200
+    iterations: 100
     # Planned: init_strategy: 'random' | 'fixed' | 'learned'
 
 validation:

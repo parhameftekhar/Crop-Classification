@@ -740,7 +740,8 @@ def setup_training_loader(
     device: str = 'cuda',
     ignore_crops: list = None,
     min_ratio: float = 0.4,
-    max_ratio: float = 0.6
+    max_ratio: float = 0.6,
+    shuffle: bool = False
 ) -> DataLoader:
     """
     Automatically sets up the training data loader with all necessary preprocessing steps.
@@ -755,6 +756,7 @@ def setup_training_loader(
         ignore_crops (list, optional): List of crop IDs to ignore when filtering balanced patches
         min_ratio (float): Minimum acceptable ratio of positive to total pixels (default: 0.4)
         max_ratio (float): Maximum acceptable ratio of positive to total pixels (default: 0.6)
+        shuffle (bool): Whether to shuffle the data (default: False)
         
     Returns:
         DataLoader: Configured training data loader
@@ -787,7 +789,7 @@ def setup_training_loader(
         device=device
     )
     
-    train_loader = DataLoader(train_dataset, batch_size=train_batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=shuffle)
     
     return train_loader
 

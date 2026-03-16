@@ -32,14 +32,23 @@ def setup_data_loader(resolution=56):
         train_batch_size=1,
         crop_band_index=18,
         device='cuda',
-        min_ratio=0.1,
-        max_ratio=0.9
+        min_ratio=0,
+        max_ratio=1
     )
     return val_loader
 
 def load_checkpoint(checkpoint_path):
     # Load the model from checkpoint
     features_extractor = torch.load(checkpoint_path, weights_only=False)
+    
+    # Ensure compatibility with older checkpoints that don't have init_head
+    if not hasattr(features_extractor, 'init_head'):
+        import torch.nn as nn
+        # num_channel_out is the last channel dimension of the CNN output
+        num_channel_out = features_extractor.M.shape[0]
+        features_extractor.init_head = nn.Conv2d(num_channel_out, 1, kernel_size=1).to(features_extractor.device)
+        print(f"Added missing init_head to feature extractor for compatibility")
+
     features_extractor.eval()
     print(f"Loaded checkpoint from {checkpoint_path}")
     return features_extractor
@@ -55,7 +64,8 @@ def validate_model(features_extractor, val_loader, positive_center, negative_cen
     with torch.no_grad():
         for bands, label in tqdm(val_loader, desc="Validation"):
             # bands shape: (1, H, W, C), label shape: (1, H, W)
-            features = features_extractor(bands).squeeze(0)
+            features, _ = features_extractor(bands)
+            features = features.squeeze(0)
             subpatch_label = label.squeeze(0)
             
             # Reshape and reorder features and labels

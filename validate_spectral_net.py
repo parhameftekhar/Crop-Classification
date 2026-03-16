@@ -25,15 +25,15 @@ def load_config(config_path='config_finetune.yaml'):
 def setup_data_loader(config, resolution=56, target_crops=[176], unchanged_crops=[1, 5, 23, 176], batch_size=1):
     # Setup test/validation loader using preprocessed subpatches
     val_loader = setup_training_loader(
-        path_to_train_data=f'./training_data{resolution}/test_patches.npy',
+        path_to_train_data=f'./training_data{resolution}/val_patches.npy',
         unchanged_crops=unchanged_crops,
         target_crops=target_crops,
         train_batch_size=batch_size,
         crop_band_index=18,
         device='cuda',
         ignore_crops=None,
-        min_ratio=0.1,
-        max_ratio=0.9
+        min_ratio=0,
+        max_ratio=1
     )
     return val_loader
 
@@ -43,8 +43,8 @@ def validate_spectral_net():
     device = 'cuda'
     
     # Parameters for validation
-    RESOLUTION = 32 # or 56
-    BATCH_SIZE = 32 # Test higher batch size
+    RESOLUTION = 112 # or 56
+    BATCH_SIZE = 1 # Test higher batch size
     patch_h = patch_w = RESOLUTION
     window_size = 30
     d_star = 1.0

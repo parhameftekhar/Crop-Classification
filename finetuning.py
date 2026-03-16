@@ -58,30 +58,41 @@ def setup_logging():
 
 
 def setup_data_loaders(config):
+    dl = config['data_loader']
+    train_cfg = dl.get('train', {})
+    val_cfg = dl.get('val', {})
+    # Backward compat: if no train/val block, use top-level min_ratio/max_ratio
+    train_min = train_cfg.get('min_ratio', dl.get('min_ratio'))
+    train_max = train_cfg.get('max_ratio', dl.get('max_ratio'))
+    val_min = val_cfg.get('min_ratio', dl.get('min_ratio'))
+    val_max = val_cfg.get('max_ratio', dl.get('max_ratio'))
+
     # Setup training loader
     train_loader = setup_training_loader(
-        path_to_train_data=config['data_loader']['train_path'],
+        path_to_train_data=dl['train_path'],
         unchanged_crops=config['general']['unchanged_crops'],
         target_crops=[config['general']['target_crop']],
-        train_batch_size=config['data_loader']['batch_size'],
-        crop_band_index=config['data_loader']['crop_band_index'],
-        device=config['data_loader']['device'],
+        train_batch_size=dl['batch_size'],
+        crop_band_index=dl['crop_band_index'],
+        device=dl['device'],
         ignore_crops=None,
-        min_ratio=config['data_loader']['min_ratio'],
-        max_ratio=config['data_loader']['max_ratio']
+        min_ratio=train_min,
+        max_ratio=train_max,
+        shuffle=True
     )
 
     # Setup validation loader
     val_loader = setup_training_loader(
-        path_to_train_data=config['data_loader']['val_path'],
+        path_to_train_data=dl['val_path'],
         unchanged_crops=config['general']['unchanged_crops'],
         target_crops=[config['general']['target_crop']],
-        train_batch_size=config['data_loader']['batch_size'],
-        crop_band_index=config['data_loader']['crop_band_index'],
-        device=config['data_loader']['device'],
+        train_batch_size=dl['batch_size'],
+        crop_band_index=dl['crop_band_index'],
+        device=dl['device'],
         ignore_crops=None,
-        min_ratio=config['data_loader']['min_ratio'],
-        max_ratio=config['data_loader']['max_ratio']
+        min_ratio=val_min,
+        max_ratio=val_max,
+        shuffle=False
     )
 
     return train_loader, val_loader
@@ -193,6 +204,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
     target_crop = config['general']['target_crop']
     aux_weight = config['training'].get('aux_loss_weight', 0.1)
     save_dir = config['paths']['save_dir']
+    validation_steps = config['training'].get('validation_steps', 0)
     
     for epoch in range(num_epochs):
         model.train()
@@ -226,14 +238,29 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             
             # Step optimizer only after accumulating enough gradients
             if (batch_idx + 1) % accumulation_steps == 0 or (batch_idx + 1) == len(train_loader):
-                # Inspect first layer gradients before step
-                first_layer_grad_norm = 0.0
+                # Detailed gradient logging (Objective 7️⃣)
+                grads = {}
+                # Feature Extractor Check
                 if hasattr(model.feature_extractor, 'cnn') and hasattr(model.feature_extractor.cnn, 'block_in'):
                     first_layer = model.feature_extractor.cnn.block_in[0]
                     if first_layer.weight.grad is not None:
-                        first_layer_grad_norm = first_layer.weight.grad.norm().item()
-                        latest_grad_norm = first_layer_grad_norm
+                        grads['cnn_norm'] = first_layer.weight.grad.norm().item()
                 
+                # Init Head Check
+                if hasattr(model.feature_extractor, 'init_head'):
+                    if model.feature_extractor.init_head.weight.grad is not None:
+                        grads['init_norm'] = model.feature_extractor.init_head.weight.grad.norm().item()
+                
+                # M Matrix Check
+                if hasattr(model.feature_extractor, 'M'):
+                    if model.feature_extractor.M.grad is not None:
+                        grads['M_norm'] = model.feature_extractor.M.grad.norm().item()
+
+                latest_grad_norm = grads.get('cnn_norm', 0.0)
+                
+                # Optional: log all grad norms to a separate file or console if debug is on
+                # For now, we update 'latest_grad_norm' which is used in the postfix
+
                 optimizer.step()
                 optimizer.zero_grad()
             
@@ -248,6 +275,28 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 'avg': running_loss / (pbar.n + 1),
                 'grad': f"{latest_grad_norm:.2e}"
             })
+
+            # Check for Step-Based Validation (Objective 8️⃣)
+            if validation_steps > 0 and (batch_idx + 1) % validation_steps == 0:
+                positive_center, negative_center = model.feature_extractor.calculate_feature_centers(val_loader)
+                val_accuracy, val_f1, avg_val_loss = validate_model(
+                    model, val_loader, criterion, positive_center, negative_center,
+                    config, logger=logger
+                )
+                
+                # Save best model based on step-based validation
+                if val_f1 > best_val_f1:
+                    best_val_f1 = val_f1
+                    if not os.path.exists(save_dir):
+                        os.makedirs(save_dir)
+                    save_path = os.path.join(save_dir, f'crop{target_crop}_finetuned_best.pth')
+                    torch.save(model, save_path)
+                    msg = f"Step [{batch_idx+1}], New best F1: {best_val_f1:.4f} saved to {save_path}"
+                    if logger: logger.info(msg)
+                    else: print(msg)
+                
+                # Reset model to training mode after validation
+                model.train()
 
         avg_epoch_loss = running_loss / len(train_loader)
         
