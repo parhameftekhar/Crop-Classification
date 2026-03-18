@@ -20,7 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'training_pspnet_binary_crop{TARGET_CROP}.log'),
+        logging.FileHandler(f'logs/benchmark/binary_case/training_pspnet_binary_crop{TARGET_CROP}.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )

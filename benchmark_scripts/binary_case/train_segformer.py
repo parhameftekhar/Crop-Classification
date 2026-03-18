@@ -21,7 +21,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'training_segformer_binary_crop{TARGET_CROP}.log'),
+        logging.FileHandler(f'logs/benchmark/binary_case/training_segformer_binary_crop{TARGET_CROP}.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )

@@ -20,7 +20,7 @@ logging.basicConfig(
     level=logging.DEBUG,  # Changed to DEBUG to see shape information
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(f'training_segmenter_crop{TARGET_CROP}.log'),
+        logging.FileHandler(f'logs/benchmark/binary_case/training_segmenter_crop{TARGET_CROP}.log'),
         logging.StreamHandler(sys.stdout)
     ]
 )
