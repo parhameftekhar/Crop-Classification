@@ -6,6 +6,8 @@ from model.eigen_solver import build_eigen_solver
 from model.graph_spectral_net import GraphSpectralNet
 from losses.signed_laplacian_loss import SignedLaplacianLoss
 from losses.normalized_correlation_loss import NormalizedCorrelationLoss
+from losses.mse_loss import MSELoss
+from losses.rayleigh_quotient_loss import RayleighQuotientLoss
 import torch.optim as optim
 import torch
 import torch.nn.functional as F
@@ -119,7 +121,7 @@ def load_feature_extractor(logger, config):
 # Solver implementation is now in model/eigen_solver.py
 
 
-def validate_model(model, val_loader, criterion, positive_center, negative_center, config, logger=None):
+def validate_model(model, train_loader, val_loader, criterion, config, logger=None):
     model.eval()
     running_loss = 0.0
     overall_confusion = np.zeros((2, 2))
@@ -129,6 +131,10 @@ def validate_model(model, val_loader, criterion, positive_center, negative_cente
     # GraphSpectralNet is already initialized with this structure (buffers)
     patch_h = config['training']['img_height']
     patch_w = config['training']['img_width']
+    
+    # Heuristic Sign Correction: Calculate feature centers from the TRAINING set
+    if logger: logger.info("Calculating feature centers from training set for sign correction...")
+    positive_center, negative_center = model.feature_extractor.calculate_feature_centers(train_loader)
     
     # Count total subpatches processed for average loss
     total_subpatches = 0
@@ -146,12 +152,12 @@ def validate_model(model, val_loader, criterion, positive_center, negative_cente
             B_curr = eigen_vector.shape[0]
             
             # Calculate Loss for the batch
-            # criterion expects preds (B, N) and ground_truth (B, H, W)
-            loss = criterion(eigen_vector, labels)
+            if isinstance(criterion, RayleighQuotientLoss):
+                loss = criterion(eigen_vector, L)
+            else:
+                loss = criterion(eigen_vector, labels)
             
-            # Optional: monitor auxiliary loss in validation
-            aux_loss = F.mse_loss(init_guess.squeeze(-1), labels)
-            running_loss += (loss + aux_loss).item() # Just for monitoring
+            running_loss += loss.item()
             total_subpatches += B_curr
             
             for b in range(B_curr):
@@ -163,12 +169,9 @@ def validate_model(model, val_loader, criterion, positive_center, negative_cente
                 order_np = model.order.cpu().numpy()
                 y = labels[b].cpu().numpy().flatten()[order_np]
                 
-                # Oracle Sign Correction (or heuristic if centers are updated)
-                # Note: features_flat is (B, N, C), so we take features_flat[b]
+                # Heuristic Sign Correction: Use feature centers to orient the prediction
                 sign_correct = correct_pred_sign(pred_sign, features_flat[b], positive_center, negative_center)
-                
-                # Correct sign and get binary prediction (0 or 1)
-                pred_final = (sign_correct * pred_sign == 1).astype(np.int32)
+                pred_final = ((sign_correct * pred_sign) == 1).astype(np.int32)
                 y_binary = (y == 1).astype(np.int32)
                 
                 overall_confusion += confusion_matrix(y_binary, pred_final, labels=[0, 1])
@@ -222,15 +225,11 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             # eigen_vector: (B, N), init_guess: (B, H, W, 1)
             eigen_val, eigen_vector, L, features_flat, init_guess = model(bands)
             
-            # Main spectral loss
-            spectral_loss = criterion(eigen_vector, labels)
-            
-            # Auxiliary loss on the init_head (encourages rough classification)
-            # labels are (+1, -1) so MSE is appropriate
-            aux_loss = F.mse_loss(init_guess.squeeze(-1), labels)
-            
-            # Combined Loss
-            loss = spectral_loss + aux_weight * aux_loss
+            # Pick the right arguments for the criterion (Unsupervised vs Supervised)
+            if isinstance(criterion, RayleighQuotientLoss):
+                loss = criterion(eigen_vector, L)
+            else:
+                loss = criterion(eigen_vector, labels)
             
             # Scale loss for gradient accumulation
             loss_scaled = loss / accumulation_steps
@@ -265,22 +264,17 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 optimizer.zero_grad()
             
             running_loss += (loss.item() * accumulation_steps)
-            running_spectral_loss += (spectral_loss.item() * accumulation_steps)
-            running_aux_loss += (aux_loss.item() * accumulation_steps)
 
             pbar.set_postfix({
                 'loss': loss.item() * accumulation_steps, 
-                'spec': spectral_loss.item() * accumulation_steps,
-                'aux': aux_loss.item() * accumulation_steps,
                 'avg': running_loss / (pbar.n + 1),
                 'grad': f"{latest_grad_norm:.2e}"
             })
 
             # Check for Step-Based Validation (Objective 8️⃣)
             if validation_steps > 0 and (batch_idx + 1) % validation_steps == 0:
-                positive_center, negative_center = model.feature_extractor.calculate_feature_centers(val_loader)
                 val_accuracy, val_f1, avg_val_loss = validate_model(
-                    model, val_loader, criterion, positive_center, negative_center,
+                    model, train_loader, val_loader, criterion,
                     config, logger=logger
                 )
                 
@@ -301,9 +295,8 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
         avg_epoch_loss = running_loss / len(train_loader)
         
         # Validation phase
-        positive_center, negative_center = model.feature_extractor.calculate_feature_centers(val_loader)
         val_accuracy, val_f1, avg_val_loss = validate_model(
-            model, val_loader, criterion, positive_center, negative_center,
+            model, train_loader, val_loader, criterion,
             config, logger=logger
         )
 
@@ -393,11 +386,21 @@ def main():
     )
     model.to(device)
     
-    # Initialize loss and optimizer
+    # Freeze the Shallow CNN backbone and M matrix as requested
+    logger.info("Freezing the Shallow CNN backbone and M matrix...")
+    for param in model.feature_extractor.cnn.parameters():
+        param.requires_grad = False
+    model.feature_extractor.M.requires_grad = False
+    
+    # Initialize loss and optimizer based on config
     if loss_type == 'signed_laplacian':
         criterion = SignedLaplacianLoss(img_height=img_height, img_width=img_width, window_size=window_size)
     elif loss_type == 'normalized_correlation':
         criterion = NormalizedCorrelationLoss(img_height=img_height, img_width=img_width, window_size=window_size)
+    elif loss_type == 'mse':
+        criterion = MSELoss(img_height=img_height, img_width=img_width, window_size=window_size)
+    elif loss_type == 'rayleigh_quotient':
+        criterion = RayleighQuotientLoss()
     else:
         raise ValueError(f"Unknown loss_type: {loss_type}")
         

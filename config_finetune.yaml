@@ -4,17 +4,17 @@ general:
   unchanged_crops: [1, 5, 23, 176]
 
 data_loader:
-  train_path: './training_data32/train_patches.npy'
-  val_path: './training_data32/val_patches.npy'
+  train_path: './training_data112/train_patches.npy'
+  val_path: './training_data112/val_patches.npy'
   batch_size: 4
   crop_band_index: 18
   device: 'cuda'
   train:
-    min_ratio: 0
-    max_ratio: 1
+    min_ratio: 0.1
+    max_ratio: 0.9
   val:
-    min_ratio: 0
-    max_ratio: 1
+    min_ratio: 0.1
+    max_ratio: 0.9
 
 paths:
   checkpoint_dir: './checkpoints/v2'
@@ -23,21 +23,23 @@ paths:
 training:
   d_star: 1.0
   window_size: 30
-  img_height: 32
-  img_width: 32
+  img_height: 112
+  img_width: 112
   learning_rate: 0.0001
-  loss_type: 'signed_laplacian' # options: 'signed_laplacian', 'normalized_correlation'
+  loss_type: 'rayleigh_quotient' # options: 'signed_laplacian', 'normalized_correlation', 'mse', 'rayleigh_quotient'
   num_epochs: 50
-  validation_steps: 1000 # Add step-based validation
+  validation_steps: 200 # Add step-based validation
   accumulation_steps: 16
   solver:
-    type: 'rayleigh'
-    iterations: 100
+    type: 'simple_lanczos'
+    iterations: 20
+    rayleigh_iterations: 15
     # Planned: init_strategy: 'random' | 'fixed' | 'learned'
 
 validation:
   img_height: 112
   img_width: 112
   solver:
-    type: 'lanczos'
-    tol: 1e-7
+    type: 'simple_lanczos'
+    iterations: 20
+    rayleigh_iterations: 40

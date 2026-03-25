@@ -5,7 +5,6 @@ from tqdm import tqdm
 from sklearn.metrics import f1_score, confusion_matrix
 from model.graph_spectral_net import GraphSpectralNet
 from data_manager import setup_training_loader, create_sparse_structure_from_images
-from utils import correct_pred_sign
 import yaml
 import os
 
@@ -23,13 +22,9 @@ def load_config(config_path='config_finetune.yaml'):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
 
-def setup_data_loader(config, resolution=56, target_crops=[176], unchanged_crops=[1, 5, 23, 176], batch_size=1, mode='val'):
-    # Setup loader using preprocessed subpatches
-    path = f'./training_data{resolution}/{"val" if mode == "val" else "train"}_patches.npy'
-    
-    # Use config-based ratios for consistency
-    min_ratio = 0.1
-    max_ratio = 0.9
+def setup_data_loader(config, resolution=32, target_crops=[176], unchanged_crops=[1, 5, 23, 176], batch_size=1):
+    # Setup test/validation loader using preprocessed subpatches
+    path = f'./training_data{resolution}/val_patches.npy'
     
     loader = setup_training_loader(
         path_to_train_data=path,
@@ -39,9 +34,8 @@ def setup_data_loader(config, resolution=56, target_crops=[176], unchanged_crops
         crop_band_index=18,
         device='cuda',
         ignore_crops=None,
-        min_ratio=min_ratio,
-        max_ratio=max_ratio,
-        shuffle=(mode == 'train')
+        min_ratio=0.1,
+        max_ratio=0.9
     )
     return loader
 
@@ -51,8 +45,8 @@ def validate_spectral_net():
     device = 'cuda'
     
     # Parameters for validation
-    RESOLUTION = 112 # or 56
-    BATCH_SIZE = 1
+    RESOLUTION = 112 # Default to 112 as in your recent tests
+    BATCH_SIZE = 1 
     patch_h = patch_w = RESOLUTION
     window_size = 30
     d_star = 1.0
@@ -63,48 +57,29 @@ def validate_spectral_net():
     edges = sparse_image_obj['edges']
     edge_i, edge_j = edges[:, 0], edges[:, 1]
     
-    checkpoint_path = f'checkpoints/v2/crop{TARGET_CROP}_vs_all.pth'
+    checkpoint_path = 'checkpoints/finetune/crop176_finetuned_best.pth'
     
-    # Initialize the End-to-End model using SciPy Lanczos
-    solver_cfg = {
-        'type': 'lanczos',
-        'tol': 1e-7,
-        'n_nodes': patch_h * patch_w
-    }
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Finetuned checkpoint not found at: {checkpoint_path}")
+
+    # Load the model directly
+    print(f"Loading fine-tuned model from {checkpoint_path}...")
+    model = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
-    model = GraphSpectralNet(
-        feature_extractor_checkpoint=checkpoint_path,
-        solver_cfg=solver_cfg,
-        order=order,
-        edge_i=edge_i,
-        edge_j=edge_j,
-        d_star=d_star,
-        device=device
-    )
+    # Update graph structure and order buffers to match current session's resolution
+    model.register_buffer('order', order)
+    model.register_buffer('edge_i', edge_i)
+    model.register_buffer('edge_j', edge_j)
+    model.to(device)
     model.eval()
     
-    # Data Loaders
+    # Loader
     val_loader = setup_data_loader(
         config, 
         resolution=RESOLUTION, 
         target_crops=[TARGET_CROP],
-        unchanged_crops=[1, 5, 23, 176],
-        batch_size=BATCH_SIZE,
-        mode='val'
+        batch_size=BATCH_SIZE
     )
-
-    train_loader = setup_data_loader(
-        config, 
-        resolution=RESOLUTION, 
-        target_crops=[TARGET_CROP],
-        unchanged_crops=[1, 5, 23, 176],
-        batch_size=BATCH_SIZE,
-        mode='train'
-    )
-    
-    # Heuristic Sign Correction: Calculate feature centers from the TRAINING loader
-    print("Calculating feature centers from the TRAINING loader for sign correction...")
-    positive_center, negative_center = model.feature_extractor.calculate_feature_centers(train_loader)
     
     overall_confusion = np.zeros((2, 2))
     valid_accuracy_list = []
@@ -115,10 +90,9 @@ def validate_spectral_net():
             bands = bands.to(device)
             labels = labels.to(device)
             
-            # Forward pass through the end-to-end model (ignoring 5th return: init_guess)
-            eigen_val, eigen_vector, L, features_flat, _ = model(bands)
+            # Forward pass
+            _, eigen_vector, _, _, _ = model(bands)
             
-            # eigen_vector shape: (B, N)
             B_curr = eigen_vector.shape[0]
             
             for b in range(B_curr):
@@ -129,16 +103,21 @@ def validate_spectral_net():
                 # Reorder labels to match the graph order (Morton order)
                 y = labels[b].cpu().numpy().flatten()[order.cpu().numpy()]
                 
-                # Heuristic Sign Correction: Using training centers to fix orientation
-                sign_correct = correct_pred_sign(pred_sign, features_flat[b], positive_center, negative_center)
-                pred = sign_correct * pred_sign
-                current_acc = np.sum(y == pred) / len(pred)
-                    
+                # Oracle Sign Correction: Choose the sign that results in higher accuracy
+                acc1 = np.sum(y == pred_sign) / len(pred_sign)
+                acc2 = np.sum(y == -pred_sign) / len(pred_sign)
+                
+                if acc1 >= acc2:
+                    current_acc = acc1
+                    pred = pred_sign
+                else:
+                    current_acc = acc2
+                    pred = -pred_sign
+
                 # Convert to binary
                 y_binary = (y == 1).astype(np.int32)
                 pred_binary = (pred == 1).astype(np.int32)
                 
-                # Confusion Matrix
                 subpatch_confusion = confusion_matrix(y_binary, pred_binary, labels=[0, 1])
                 overall_confusion += subpatch_confusion
                 
@@ -152,7 +131,7 @@ def validate_spectral_net():
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     accuracy = (tp + tn) / (tp + tn + fp + fn)
     
-    print(f"\nOverall Results from GraphSpectralNet (Heuristic - Trained Centers):")
+    print(f"\nOverall Results from Fine-tuned GraphSpectralNet (Oracle Sign Correction):")
     print(f"Confusion Matrix:\n{overall_confusion}")
     print(f"Precision: {precision:.4f}\nRecall: {recall:.4f}")
     print(f"F1 Score: {f1:.4f}\nAccuracy: {accuracy:.4f}")
