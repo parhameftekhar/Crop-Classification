@@ -6,7 +6,7 @@ general:
 data_loader:
   train_path: './training_data112/train_patches.npy'
   val_path: './training_data112/val_patches.npy'
-  batch_size: 4
+  batch_size: 1
   crop_band_index: 18
   device: 'cuda'
   train:
@@ -29,9 +29,9 @@ training:
   loss_type: 'rayleigh_quotient' # options: 'signed_laplacian', 'normalized_correlation', 'mse', 'rayleigh_quotient'
   num_epochs: 50
   validation_steps: 200 # Add step-based validation
-  accumulation_steps: 16
+  accumulation_steps: 64
   solver:
-    type: 'simple_lanczos'
+    type: 'unrolled_lanczos'
     iterations: 20
     rayleigh_iterations: 15
     # Planned: init_strategy: 'random' | 'fixed' | 'learned'
@@ -40,6 +40,6 @@ validation:
   img_height: 112
   img_width: 112
   solver:
-    type: 'simple_lanczos'
+    type: 'unrolled_lanczos'
     iterations: 20
     rayleigh_iterations: 40

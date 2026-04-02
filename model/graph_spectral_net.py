@@ -127,11 +127,11 @@ class GraphSpectralNet(nn.Module):
         L = torch.sparse_coo_tensor(L_indices, L_values, (giant_n, giant_n)).coalesce()
         
         # 3. Differentiable Eigen-solving
-        # solve returns lam (B, 1) and vector (BN, 1)
+        # solve returns lam (B, 1), vector (BN, 1), and residual_loss (scalar/B)
         # We pass the flattened init_guess as the warm start
-        eigen_val, eigen_vector = self.solver.solve(L, v_init=init_guess_flat, device=self.device)
+        eigen_val, eigen_vector, residual_loss = self.solver.solve(L, v_init=init_guess_flat, device=self.device)
         
         # Reshape vector back to (B, N)
         eigen_vector = eigen_vector.view(B, num_nodes_per_patch)
         
-        return eigen_val, eigen_vector, L, features_flat, init_guess
+        return eigen_val, eigen_vector, residual_loss, L, features_flat, init_guess

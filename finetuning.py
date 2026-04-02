@@ -145,7 +145,7 @@ def validate_model(model, train_loader, val_loader, criterion, config, logger=No
             # labels shape: (B, H, W)
             
             # Forward pass through the end-to-end model
-            eigen_val, eigen_vector, L, features_flat, init_guess = model(bands)
+            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess = model(bands)
             
             # eigen_vector shape: (B, N)
             # features_flat shape: (B, N, C)
@@ -199,13 +199,25 @@ def validate_model(model, train_loader, val_loader, criterion, config, logger=No
     return accuracy, f1, avg_val_loss
 
 
+def log_gamma_stats(model, logger=None):
+    """Monitor Gamma values from the unrolled Lanczos solver."""
+    if hasattr(model, 'solver') and hasattr(model.solver, 'gamma'):
+        g_vals = model.solver.gamma.detach().cpu().numpy()
+        g_msg = f"Gamma stats - Mean: {g_vals.mean():.4f}, Min: {g_vals.min():.4f}, Max: {g_vals.max():.4f}\n"
+        g_msg += f"Gamma vector: {np.array2string(g_vals, precision=3, separator=', ')}"
+        if logger:
+            logger.info(g_msg)
+        else:
+            print(g_msg)
+
+
 def train_model(model, train_loader, val_loader, config, device, criterion, optimizer, logger=None):
     best_val_f1 = 0.0
     num_epochs = config['training']['num_epochs']
     patch_size = config['training']['img_height']
     accumulation_steps = config['training'].get('accumulation_steps', 1)
     target_crop = config['general']['target_crop']
-    aux_weight = config['training'].get('aux_loss_weight', 0.1)
+    aux_weight = config['training'].get('aux_loss_weight', 1)
     save_dir = config['paths']['save_dir']
     validation_steps = config['training'].get('validation_steps', 0)
     
@@ -215,6 +227,36 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
         running_spectral_loss = 0.0
         running_aux_loss = 0.0
         latest_grad_norm = 0.0
+        
+        # --- Phased Parameter Control Logic ---
+        if epoch == 0:
+            # Phase 1: Only train gamma
+            if logger: logger.info("Phase 1: Pre-training solver (Training: GAMMA | Frozen: INIT_HEAD, SUB_SOLVER)")
+            # FREEZE init_head (reverting to frozen state for Phase 1)
+            if hasattr(model.feature_extractor, 'init_head'):
+                for p in model.feature_extractor.init_head.parameters():
+                    p.requires_grad = False
+            # Freeze sub_solver step sizes
+            if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
+                model.solver.sub_solver.raw_step_sizes.requires_grad = False
+            # Ensure gamma is trainable
+            if hasattr(model.solver, 'gamma'):
+                model.solver.gamma.requires_grad = True
+        
+        elif epoch == 1:
+            # Phase 2: Train everything EXCEPT gamma
+            if logger: logger.info("Phase 2: Main Training (Training: INIT_HEAD, SUB_SOLVER, Frozen: GAMMA)")
+            # Unfreeze init_head
+            if hasattr(model.feature_extractor, 'init_head'):
+                for p in model.feature_extractor.init_head.parameters():
+                    p.requires_grad = True
+            # Unfreeze sub_solver step sizes
+            if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
+                model.solver.sub_solver.raw_step_sizes.requires_grad = True
+            # Freeze gamma
+            if hasattr(model.solver, 'gamma'):
+                model.solver.gamma.requires_grad = False
+
         optimizer.zero_grad()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
         for batch_idx, (bands, labels) in enumerate(pbar):
@@ -223,7 +265,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             
             # Forward pass through the end-to-end model
             # eigen_vector: (B, N), init_guess: (B, H, W, 1)
-            eigen_val, eigen_vector, L, features_flat, init_guess = model(bands)
+            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess = model(bands)
             
             # Pick the right arguments for the criterion (Unsupervised vs Supervised)
             if isinstance(criterion, RayleighQuotientLoss):
@@ -231,8 +273,14 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             else:
                 loss = criterion(eigen_vector, labels)
             
+            # --- Phased Training (Objective 11 - Simplified to Main Loss Only) ---
+            # Both phases now use the main objective (loss)
+            # Parameter control is handled at the start of the epoch
+            total_loss = res_loss
+            
+
             # Scale loss for gradient accumulation
-            loss_scaled = loss / accumulation_steps
+            loss_scaled = total_loss / accumulation_steps
             loss_scaled.backward()
             
             # Step optimizer only after accumulating enough gradients
@@ -255,7 +303,17 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                     if model.feature_extractor.M.grad is not None:
                         grads['M_norm'] = model.feature_extractor.M.grad.norm().item()
 
-                latest_grad_norm = grads.get('cnn_norm', 0.0)
+                # Solver Check for gamma gradients
+                if hasattr(model.solver, 'gamma') and model.solver.gamma.grad is not None:
+                    grads['gamma_norm'] = model.solver.gamma.grad.norm().item()
+
+                # Prefer showing gradients for parts that are actually training
+                if 'init_norm' in grads:
+                    latest_grad_norm = grads['init_norm']
+                elif 'gamma_norm' in grads:
+                    latest_grad_norm = grads['gamma_norm']
+                else:
+                    latest_grad_norm = grads.get('cnn_norm', 0.0)
                 
                 # Optional: log all grad norms to a separate file or console if debug is on
                 # For now, we update 'latest_grad_norm' which is used in the postfix
@@ -263,12 +321,22 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 optimizer.step()
                 optimizer.zero_grad()
             
-            running_loss += (loss.item() * accumulation_steps)
+            running_loss += (total_loss.item() * accumulation_steps)
+            running_spectral_loss += (loss.item() * accumulation_steps)
+            running_aux_loss += (res_loss.item() * accumulation_steps)
+
+            # Get mean gamma value for real-time monitoring
+            gamma_mean = 0.0
+            if hasattr(model.solver, 'gamma'):
+                gamma_mean = model.solver.gamma.mean().item()
 
             pbar.set_postfix({
-                'loss': loss.item() * accumulation_steps, 
+                'loss': total_loss.item() * accumulation_steps, 
+                'spec': loss.item() * accumulation_steps,
+                'res': res_loss.item() * accumulation_steps,
                 'avg': running_loss / (pbar.n + 1),
-                'grad': f"{latest_grad_norm:.2e}"
+                'grad': f"{latest_grad_norm:.2e}",
+                'g_m': f"{gamma_mean:.2f}"
             })
 
             # Check for Step-Based Validation (Objective 8️⃣)
@@ -277,6 +345,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                     model, train_loader, val_loader, criterion,
                     config, logger=logger
                 )
+                log_gamma_stats(model, logger=logger)
                 
                 # Save best model based on step-based validation
                 if val_f1 > best_val_f1:
@@ -294,11 +363,12 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
 
         avg_epoch_loss = running_loss / len(train_loader)
         
-        # Validation phase
+        # Validation phase (End of Epoch)
         val_accuracy, val_f1, avg_val_loss = validate_model(
             model, train_loader, val_loader, criterion,
             config, logger=logger
         )
+        log_gamma_stats(model, logger=logger)
 
         end_msg = f"Epoch [{epoch+1}/{num_epochs}], Avg Train Loss: {avg_epoch_loss:.6f}, Avg Val Loss: {avg_val_loss:.6f}, Latest Grad Norm: {latest_grad_norm:.2e}"
         if logger:
