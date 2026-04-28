@@ -55,6 +55,13 @@ class GraphSpectralNet(nn.Module):
                 model.init_head = nn.Conv2d(num_channel_out, 1, kernel_size=1).to(self.device)
                 print(f"GraphSpectralNet: Added missing init_head to feature extractor")
 
+            # Ensure compatibility with older checkpoints that don't have self_loop_head
+            if not hasattr(model, 'self_loop_head'):
+                num_channel_out = model.M.shape[0]
+                model.self_loop_head = nn.Conv2d(num_channel_out, 1, kernel_size=1).to(self.device)
+                model.self_loop_activation = nn.Softplus()
+                print(f"GraphSpectralNet: Added missing self_loop_head to feature extractor")
+
             print(f"GraphSpectralNet: Loaded feature extractor from {checkpoint_path}")
             return model
         else:
@@ -69,8 +76,8 @@ class GraphSpectralNet(nn.Module):
         """
         # x shape: (B, H, W, C)
         batch_size = x.shape[0]
-        # features: (B, H, W, C), init_guess: (B, H, W, 1)
-        features, init_guess = self.feature_extractor(x)
+        # features: (B, H, W, C), init_guess: (B, H, W, 1), self_loop_vals: (B, H, W, 1)
+        features, init_guess, self_loop_vals = self.feature_extractor(x)
         B, H, W, C = features.shape
         num_nodes_per_patch = H * W
         
@@ -82,9 +89,10 @@ class GraphSpectralNet(nn.Module):
         if curr_order is None or curr_edge_i is None or curr_edge_j is None:
             raise ValueError("Graph structure (order, edge_i, edge_j) must be provided")
         
-        # Flatten and reorder features/init_guess for the whole batch
-        features_flat = features.reshape(B, num_nodes_per_patch, -1)[:, curr_order, :]
-        init_guess_flat = init_guess.reshape(B, num_nodes_per_patch, 1)[:, curr_order, :]
+        # Flatten and reorder features/init_guess/self_loop_vals for the whole batch
+        features_flat      = features.reshape(B, num_nodes_per_patch, -1)[:, curr_order, :]
+        init_guess_flat    = init_guess.reshape(B, num_nodes_per_patch, 1)[:, curr_order, :]
+        self_loop_flat     = self_loop_vals.reshape(B, num_nodes_per_patch, 1)[:, curr_order, :].squeeze(-1)  # (B, N)
         
         # Calculate edge weights for the whole batch
         # features_flat_i shape: (B, E, C)
@@ -119,9 +127,11 @@ class GraphSpectralNet(nn.Module):
         L_indices = torch.cat([diag_indices, off_diag_indices], dim=1)
         
         # Giant Laplacian Values
+        # Diagonal = degree (from off-diagonal edges) + learnable self-loop
         global_weights = weights.flatten()
-        global_degree = degree.flatten()
-        L_values = torch.cat([global_degree, -global_weights, -global_weights], dim=0)
+        global_degree  = degree.flatten()
+        global_self_loops = self_loop_flat.flatten()               # (B*N,)
+        L_values = torch.cat([global_degree + global_self_loops, -global_weights, -global_weights], dim=0)
         
         giant_n = B * num_nodes_per_patch
         L = torch.sparse_coo_tensor(L_indices, L_values, (giant_n, giant_n)).coalesce()
@@ -134,4 +144,4 @@ class GraphSpectralNet(nn.Module):
         # Reshape vector back to (B, N)
         eigen_vector = eigen_vector.view(B, num_nodes_per_patch)
         
-        return eigen_val, eigen_vector, residual_loss, L, features_flat, init_guess
+        return eigen_val, eigen_vector, residual_loss, L, features_flat, init_guess, self_loop_flat

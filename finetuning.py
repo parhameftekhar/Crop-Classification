@@ -145,7 +145,7 @@ def validate_model(model, train_loader, val_loader, criterion, config, logger=No
             # labels shape: (B, H, W)
             
             # Forward pass through the end-to-end model
-            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess = model(bands)
+            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess, self_loop_flat = model(bands)
             
             # eigen_vector shape: (B, N)
             # features_flat shape: (B, N, C)
@@ -227,35 +227,36 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
         running_spectral_loss = 0.0
         running_aux_loss = 0.0
         latest_grad_norm = 0.0
+        total_grad_norm = 0.0
         
         # --- Phased Parameter Control Logic ---
-        if epoch == 0:
-            # Phase 1: Only train gamma
-            if logger: logger.info("Phase 1: Pre-training solver (Training: GAMMA | Frozen: INIT_HEAD, SUB_SOLVER)")
-            # FREEZE init_head (reverting to frozen state for Phase 1)
-            if hasattr(model.feature_extractor, 'init_head'):
-                for p in model.feature_extractor.init_head.parameters():
-                    p.requires_grad = False
-            # Freeze sub_solver step sizes
-            if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
-                model.solver.sub_solver.raw_step_sizes.requires_grad = False
-            # Ensure gamma is trainable
-            if hasattr(model.solver, 'gamma'):
-                model.solver.gamma.requires_grad = True
+        # if epoch == 0:
+        #     # Phase 1: Only train gamma
+        #     if logger: logger.info("Phase 1: Pre-training solver (Training: GAMMA | Frozen: INIT_HEAD, SUB_SOLVER)")
+        #     # FREEZE init_head (reverting to frozen state for Phase 1)
+        #     if hasattr(model.feature_extractor, 'init_head'):
+        #         for p in model.feature_extractor.init_head.parameters():
+        #             p.requires_grad = False
+        #     # Freeze sub_solver step sizes
+        #     if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
+        #         model.solver.sub_solver.raw_step_sizes.requires_grad = False
+        #     # Ensure gamma is trainable
+        #     if hasattr(model.solver, 'gamma'):
+        #         model.solver.gamma.requires_grad = True
         
-        elif epoch == 1:
-            # Phase 2: Train everything EXCEPT gamma
-            if logger: logger.info("Phase 2: Main Training (Training: INIT_HEAD, SUB_SOLVER, Frozen: GAMMA)")
-            # Unfreeze init_head
-            if hasattr(model.feature_extractor, 'init_head'):
-                for p in model.feature_extractor.init_head.parameters():
-                    p.requires_grad = True
-            # Unfreeze sub_solver step sizes
-            if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
-                model.solver.sub_solver.raw_step_sizes.requires_grad = True
-            # Freeze gamma
-            if hasattr(model.solver, 'gamma'):
-                model.solver.gamma.requires_grad = False
+        # elif epoch == 1:
+        #     # Phase 2: Train everything EXCEPT gamma
+        #     if logger: logger.info("Phase 2: Main Training (Training: INIT_HEAD, SUB_SOLVER, Frozen: GAMMA)")
+        #     # Unfreeze init_head
+        #     if hasattr(model.feature_extractor, 'init_head'):
+        #         for p in model.feature_extractor.init_head.parameters():
+        #             p.requires_grad = True
+        #     # Unfreeze sub_solver step sizes
+        #     if hasattr(model.solver, 'sub_solver') and hasattr(model.solver.sub_solver, 'raw_step_sizes'):
+        #         model.solver.sub_solver.raw_step_sizes.requires_grad = True
+        #     # Freeze gamma
+        #     if hasattr(model.solver, 'gamma'):
+        #         model.solver.gamma.requires_grad = False
 
         optimizer.zero_grad()
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}")
@@ -265,7 +266,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             
             # Forward pass through the end-to-end model
             # eigen_vector: (B, N), init_guess: (B, H, W, 1)
-            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess = model(bands)
+            eigen_val, eigen_vector, res_loss, L, features_flat, init_guess, self_loop_flat = model(bands)
             
             # Pick the right arguments for the criterion (Unsupervised vs Supervised)
             if isinstance(criterion, RayleighQuotientLoss):
@@ -276,7 +277,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
             # --- Phased Training (Objective 11 - Simplified to Main Loss Only) ---
             # Both phases now use the main objective (loss)
             # Parameter control is handled at the start of the epoch
-            total_loss = res_loss
+            total_loss = loss
             
 
             # Scale loss for gradient accumulation
@@ -318,6 +319,14 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 # Optional: log all grad norms to a separate file or console if debug is on
                 # For now, we update 'latest_grad_norm' which is used in the postfix
 
+                # Gradient clipping — protects against high-norm crops (e.g. crop 1)
+                # while allowing a higher base lr to benefit low-norm crops (e.g. crop 5)
+                max_norm = config['training'].get('grad_clip_max_norm', 1.0)
+                total_grad_norm = torch.nn.utils.clip_grad_norm_(
+                    filter(lambda p: p.requires_grad, model.parameters()),
+                    max_norm=max_norm
+                ).item()
+
                 optimizer.step()
                 optimizer.zero_grad()
             
@@ -336,6 +345,7 @@ def train_model(model, train_loader, val_loader, config, device, criterion, opti
                 'res': res_loss.item() * accumulation_steps,
                 'avg': running_loss / (pbar.n + 1),
                 'grad': f"{latest_grad_norm:.2e}",
+                'clip': f"{total_grad_norm:.2e}",
                 'g_m': f"{gamma_mean:.2f}"
             })
 
@@ -456,7 +466,7 @@ def main():
     )
     model.to(device)
     
-    # Freeze the Shallow CNN backbone and M matrix as requested
+    # Freeze the Shallow CNN backbone and M matrix
     logger.info("Freezing the Shallow CNN backbone and M matrix...")
     for param in model.feature_extractor.cnn.parameters():
         param.requires_grad = False

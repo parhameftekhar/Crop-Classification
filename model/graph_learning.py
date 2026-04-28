@@ -105,6 +105,11 @@ class FeatureExtractor(nn.Module):
         # This head predicts a single value per pixel representing the rough cluster assignment
         self.init_head = nn.Conv2d(num_channel_out, 1, kernel_size=1, device=device)
         
+        # Self-loop head: predicts a learnable positive diagonal value per pixel
+        # This adds self-loops to the Laplacian diagonal (L_ii += self_loop_vals_i)
+        self.self_loop_head = nn.Conv2d(num_channel_out, 1, kernel_size=1, device=device)
+        self.self_loop_activation = nn.Softplus()  # Ensures positive self-loop weights
+        
         # Store the device
         self.device = device
         
@@ -120,9 +125,10 @@ class FeatureExtractor(nn.Module):
             inputBands (torch.Tensor): Input tensor of shape (B, H, W, C)
             
         Returns:
-            tuple: (features, init_guess)
+            tuple: (features, init_guess, self_loop_vals)
                 - features: Transformed feature tensor of shape (B, H, W, C)
                 - init_guess: Scalar initial guess per pixel of shape (B, H, W, 1)
+                - self_loop_vals: Positive self-loop weight per pixel of shape (B, H, W, 1)
         """
         # Get output from the CNN
         features = self.cnn(inputBands)  # shape: (B, H, W, C)
@@ -133,13 +139,19 @@ class FeatureExtractor(nn.Module):
         transformed_features = torch.matmul(features_reshaped, self.M)
         features = transformed_features.reshape(B, H, W, C)
         
-        # Generate the initial guess for the eigen solver
-        # features for init_head should be (B, C, H, W)
+        # features for head layers should be (B, C, H, W)
         features_permuted = features.permute(0, 3, 1, 2)
-        init_guess = self.init_head(features_permuted) # (B, 1, H, W)
-        init_guess = init_guess.permute(0, 2, 3, 1) # (B, H, W, 1)
         
-        return features, init_guess
+        # Generate the initial guess for the eigen solver
+        init_guess = self.init_head(features_permuted)      # (B, 1, H, W)
+        init_guess = init_guess.permute(0, 2, 3, 1)         # (B, H, W, 1)
+        
+        # Generate learnable self-loop (diagonal) values for the Laplacian
+        self_loop_vals = self.self_loop_head(features_permuted)          # (B, 1, H, W)
+        self_loop_vals = self.self_loop_activation(self_loop_vals)       # ensure positive
+        self_loop_vals = self_loop_vals.permute(0, 2, 3, 1)             # (B, H, W, 1)
+        
+        return features, init_guess, self_loop_vals
 
     def calculate_feature_centers(self, train_loader):
         """
@@ -163,7 +175,7 @@ class FeatureExtractor(nn.Module):
         with torch.no_grad():
             for bands, labels in train_loader:
                 # Extract features (ignore the init_guess here)
-                features, _ = self(bands)
+                features, _, _sl = self(bands)
                 # Reshape features and labels to match
                 features = features.reshape(-1, features.shape[-1])
                 labels = labels.reshape(-1)
